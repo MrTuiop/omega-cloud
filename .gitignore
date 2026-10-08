@@ -28,8 +28,8 @@ dist/
 .angular/
 npm-debug.log*
 
-# Docker / Local data
-data/
+# Docker / Local storage data in repo root ONLY
+/data/
 *.env.local
 .env
 
