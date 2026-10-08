@@ -9,6 +9,8 @@ namespace OmegaCloud.Infrastructure.Data.Seeding;
 
 public class DatabaseSeeder
 {
+    public static readonly Guid MasterLocalStorageNodeId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+
     private readonly AppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IConfiguration _configuration;
@@ -27,6 +29,12 @@ public class DatabaseSeeder
     }
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
+    {
+        await SeedAdminAsync(cancellationToken);
+        await SeedLocalStorageNodeAsync(cancellationToken);
+    }
+
+    private async Task SeedAdminAsync(CancellationToken cancellationToken)
     {
         var hasAdmin = await _dbContext.Users.AnyAsync(u => u.Role == UserRole.Admin, cancellationToken);
         if (hasAdmin)
@@ -60,5 +68,37 @@ public class DatabaseSeeder
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Successfully created initial administrator account: {Username}", username);
+    }
+
+    private async Task SeedLocalStorageNodeAsync(CancellationToken cancellationToken)
+    {
+        var hasLocalNode = await _dbContext.StorageNodes.AnyAsync(n => n.Type == StorageNodeType.LocalDisk, cancellationToken);
+        if (hasLocalNode)
+        {
+            return;
+        }
+
+        _logger.LogInformation("No local storage node found. Seeding default Master Local Storage node.");
+
+        var localNode = new StorageNode
+        {
+            Id = MasterLocalStorageNodeId,
+            Name = "Master Local Storage",
+            RegistrationKey = "master-local-storage-daemon-key",
+            NodeSecretHash = "master_local_internal_secret",
+            Type = StorageNodeType.LocalDisk,
+            BaseUrl = null,
+            IsBehindNat = false,
+            Status = StorageNodeStatus.Online,
+            TotalSpaceBytes = 1_099_511_627_776L, // 1 TB default
+            AvailableSpaceBytes = 1_099_511_627_776L,
+            LastHeartbeatAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _dbContext.StorageNodes.Add(localNode);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully seeded Master Local Storage node: {NodeId}", localNode.Id);
     }
 }

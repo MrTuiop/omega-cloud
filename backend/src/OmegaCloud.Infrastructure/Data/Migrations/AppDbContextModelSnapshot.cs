@@ -22,6 +22,320 @@ namespace OmegaCloud.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.FileItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsFavorite")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("StorageBlobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FolderId");
+
+                    b.HasIndex("IsDeleted");
+
+                    b.HasIndex("StorageBlobId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "FolderId", "Name", "IsDeleted");
+
+                    b.ToTable("FileItems", (string)null);
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.Folder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid?>("ParentFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsDeleted");
+
+                    b.HasIndex("ParentFolderId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "ParentFolderId", "Name", "IsDeleted");
+
+                    b.ToTable("Folders", (string)null);
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.StorageBlob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ReferenceCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<string>("Sha256Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("StorageNodeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StorageRelativePath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sha256Hash");
+
+                    b.HasIndex("StorageNodeId");
+
+                    b.ToTable("StorageBlobs", (string)null);
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.StorageNode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AvailableSpaceBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("BaseUrl")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsBehindNat")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("LastHeartbeatAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("NodeSecretHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RegistrationKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("TotalSpaceBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastHeartbeatAt");
+
+                    b.HasIndex("RegistrationKey")
+                        .IsUnique();
+
+                    b.ToTable("StorageNodes", (string)null);
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.UploadChunk", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ChunkIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsUploaded")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Sha256Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UploadSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UploadSessionId", "ChunkIndex")
+                        .IsUnique();
+
+                    b.ToTable("UploadChunks", (string)null);
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.UploadSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ChunkSizeBytes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExpectedSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("StorageNodeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TargetFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TempStoragePath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("TotalChunks")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("TotalSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("StorageNodeId");
+
+                    b.HasIndex("TargetFolderId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UploadSessions", (string)null);
+                });
+
             modelBuilder.Entity("OmegaCloud.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -131,6 +445,98 @@ namespace OmegaCloud.Infrastructure.Data.Migrations
                     b.ToTable("UserSessions", (string)null);
                 });
 
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.FileItem", b =>
+                {
+                    b.HasOne("OmegaCloud.Domain.Entities.Folder", "Folder")
+                        .WithMany("FileItems")
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("OmegaCloud.Domain.Entities.StorageBlob", "StorageBlob")
+                        .WithMany("FileItems")
+                        .HasForeignKey("StorageBlobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OmegaCloud.Domain.Entities.User", "User")
+                        .WithMany("FileItems")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Folder");
+
+                    b.Navigation("StorageBlob");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.Folder", b =>
+                {
+                    b.HasOne("OmegaCloud.Domain.Entities.Folder", "ParentFolder")
+                        .WithMany("SubFolders")
+                        .HasForeignKey("ParentFolderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("OmegaCloud.Domain.Entities.User", "User")
+                        .WithMany("Folders")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ParentFolder");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.StorageBlob", b =>
+                {
+                    b.HasOne("OmegaCloud.Domain.Entities.StorageNode", "StorageNode")
+                        .WithMany("Blobs")
+                        .HasForeignKey("StorageNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("StorageNode");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.UploadChunk", b =>
+                {
+                    b.HasOne("OmegaCloud.Domain.Entities.UploadSession", "UploadSession")
+                        .WithMany("Chunks")
+                        .HasForeignKey("UploadSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("UploadSession");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.UploadSession", b =>
+                {
+                    b.HasOne("OmegaCloud.Domain.Entities.StorageNode", "StorageNode")
+                        .WithMany("UploadSessions")
+                        .HasForeignKey("StorageNodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OmegaCloud.Domain.Entities.Folder", "TargetFolder")
+                        .WithMany()
+                        .HasForeignKey("TargetFolderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("OmegaCloud.Domain.Entities.User", "User")
+                        .WithMany("UploadSessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StorageNode");
+
+                    b.Navigation("TargetFolder");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("OmegaCloud.Domain.Entities.UserSession", b =>
                 {
                     b.HasOne("OmegaCloud.Domain.Entities.User", "User")
@@ -142,9 +548,39 @@ namespace OmegaCloud.Infrastructure.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.Folder", b =>
+                {
+                    b.Navigation("FileItems");
+
+                    b.Navigation("SubFolders");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.StorageBlob", b =>
+                {
+                    b.Navigation("FileItems");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.StorageNode", b =>
+                {
+                    b.Navigation("Blobs");
+
+                    b.Navigation("UploadSessions");
+                });
+
+            modelBuilder.Entity("OmegaCloud.Domain.Entities.UploadSession", b =>
+                {
+                    b.Navigation("Chunks");
+                });
+
             modelBuilder.Entity("OmegaCloud.Domain.Entities.User", b =>
                 {
+                    b.Navigation("FileItems");
+
+                    b.Navigation("Folders");
+
                     b.Navigation("Sessions");
+
+                    b.Navigation("UploadSessions");
                 });
 #pragma warning restore 612, 618
         }

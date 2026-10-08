@@ -9,6 +9,7 @@ using OmegaCloud.Infrastructure.Data;
 using OmegaCloud.Infrastructure.Data.Seeding;
 using OmegaCloud.Infrastructure.Security;
 using OmegaCloud.Infrastructure.Services;
+using OmegaCloud.Infrastructure.Storage;
 
 namespace OmegaCloud.Infrastructure;
 
@@ -20,6 +21,10 @@ public static class DependencyInjection
         var jwtSection = configuration.GetSection(JwtOptions.SectionName);
         services.Configure<JwtOptions>(jwtSection);
         var jwtOptions = jwtSection.Get<JwtOptions>() ?? new JwtOptions();
+
+        // Bind Storage Options
+        var storageSection = configuration.GetSection(LocalStorageOptions.SectionName);
+        services.Configure<LocalStorageOptions>(storageSection);
 
         // Database Configuration
         var useInMemory = configuration.GetValue<bool>("UseInMemoryDatabase");
@@ -65,11 +70,16 @@ public static class DependencyInjection
 
         services.AddAuthorization();
 
-        // Services
+        // Security & Time Services
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddScoped<IJwtProvider, JwtProvider>();
         services.AddScoped<DatabaseSeeder>();
+
+        // Storage Drivers
+        services.AddSingleton<LocalDiskStorageDriver>();
+        services.AddSingleton<IStorageDriver>(sp => sp.GetRequiredService<LocalDiskStorageDriver>());
+        services.AddSingleton<IStorageDriverResolver, StorageDriverResolver>();
 
         return services;
     }

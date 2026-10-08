@@ -16,4 +16,7 @@ public class User
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
+    public ICollection<Folder> Folders { get; set; } = new List<Folder>();
+    public ICollection<FileItem> FileItems { get; set; } = new List<FileItem>();
+    public ICollection<UploadSession> UploadSessions { get; set; } = new List<UploadSession>();
 }
