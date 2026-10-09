@@ -1,0 +1,19 @@
+# Dependencies and builds
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.angular/
+**/.angular/
+
+# IDE and OS files
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+
+# Version control & logs
+.git/
+**/.git/
+npm-debug.log*
+**/*.log

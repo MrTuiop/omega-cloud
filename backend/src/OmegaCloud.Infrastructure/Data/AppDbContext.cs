@@ -18,6 +18,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<StorageBlob> StorageBlobs => Set<StorageBlob>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
     public DbSet<UploadChunk> UploadChunks => Set<UploadChunk>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

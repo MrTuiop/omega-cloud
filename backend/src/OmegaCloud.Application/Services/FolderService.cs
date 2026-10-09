@@ -10,12 +10,16 @@ namespace OmegaCloud.Application.Services;
 public class FolderService : IFolderService
 {
     private readonly IAppDbContext _dbContext;
+    private readonly IRealtimeNotifier _notifier;
 
     private static readonly char[] InvalidChars = { '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0' };
 
-    public FolderService(IAppDbContext dbContext)
+    public FolderService(
+        IAppDbContext dbContext,
+        IRealtimeNotifier? notifier = null)
     {
         _dbContext = dbContext;
+        _notifier = notifier ?? NullRealtimeNotifier.Instance;
     }
 
     public async Task<FolderContentDto> GetFolderContentAsync(Guid? folderId, Guid userId, CancellationToken ct = default)
@@ -133,7 +137,10 @@ public class FolderService : IFolderService
         _dbContext.Folders.Add(folder);
         await _dbContext.SaveChangesAsync(ct);
 
-        return MapToDto(folder);
+        var dto = MapToDto(folder);
+        await _notifier.NotifyDirectoryChangedAsync(userId, request.ParentFolderId, "Created", dto, ct);
+
+        return dto;
     }
 
     public async Task<FolderDto> UpdateFolderAsync(Guid id, UpdateFolderRequest request, Guid userId, CancellationToken ct = default)
@@ -142,6 +149,7 @@ public class FolderService : IFolderService
             .FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId && !f.IsDeleted, ct)
             ?? throw new NotFoundException($"Folder with ID '{id}' was not found.");
 
+        var oldParentId = folder.ParentFolderId;
         var targetParentId = folder.ParentFolderId;
         var isMoving = false;
 
@@ -225,7 +233,19 @@ public class FolderService : IFolderService
         folder.UpdatedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
 
-        return MapToDto(folder);
+        var dto = MapToDto(folder);
+        if (isMoving && oldParentId != folder.ParentFolderId)
+        {
+            // Notify both source and destination parent folders
+            await _notifier.NotifyDirectoryChangedAsync(userId, oldParentId, "Moved", dto, ct);
+            await _notifier.NotifyDirectoryChangedAsync(userId, folder.ParentFolderId, "Moved", dto, ct);
+        }
+        else
+        {
+            await _notifier.NotifyDirectoryChangedAsync(userId, folder.ParentFolderId, "Updated", dto, ct);
+        }
+
+        return dto;
     }
 
     public async Task DeleteFolderAsync(Guid id, Guid userId, CancellationToken ct = default)
@@ -266,6 +286,9 @@ public class FolderService : IFolderService
         }
 
         await _dbContext.SaveChangesAsync(ct);
+
+        var dto = MapToDto(folder);
+        await _notifier.NotifyDirectoryChangedAsync(userId, folder.ParentFolderId, "Deleted", dto, ct);
     }
 
     private static string ValidateFolderName(string? name)
@@ -342,7 +365,7 @@ public class FolderService : IFolderService
             {
                 foreach (var child in children)
                 {
-                    if (descendants.Add(child.Id))
+                    if (child.Id != rootFolderId && descendants.Add(child.Id))
                     {
                         queue.Enqueue(child.Id);
                     }
@@ -360,6 +383,8 @@ public class FolderService : IFolderService
         ParentFolderId = f.ParentFolderId,
         Name = f.Name,
         Color = f.Color,
+        IsDeleted = f.IsDeleted,
+        DeletedAt = f.DeletedAt,
         CreatedAt = f.CreatedAt,
         UpdatedAt = f.UpdatedAt
     };
@@ -374,6 +399,8 @@ public class FolderService : IFolderService
         Extension = f.Extension,
         MimeType = f.MimeType,
         SizeBytes = f.SizeBytes,
+        IsDeleted = f.IsDeleted,
+        DeletedAt = f.DeletedAt,
         IsFavorite = f.IsFavorite,
         CreatedAt = f.CreatedAt,
         UpdatedAt = f.UpdatedAt

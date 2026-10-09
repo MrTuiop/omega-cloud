@@ -1,0 +1,64 @@
+{$DOMAIN:localhost} {
+    # Динамический режим TLS: internal (локальный CA) или адрес электронной почты для Let's Encrypt
+    tls {$CADDY_TLS:internal}
+
+    # Caddy по умолчанию не ограничивает размер тела запроса (потоковый стриминг чанков без лимитов)
+
+    # SignalR WebSockets & API проксируются на бэкенд
+    handle /api/* {
+        reverse_proxy backend:5000 {
+            flush_interval -1
+            transport http {
+                read_timeout 3600s
+                write_timeout 3600s
+            }
+        }
+    }
+
+    handle /hubs/* {
+        reverse_proxy backend:5000 {
+            flush_interval -1
+        }
+    }
+
+    # Health check probe
+    handle /health* {
+        reverse_proxy backend:5000
+    }
+
+    # Swagger / OpenAPI documentation
+    redir /swagger /swagger/
+    handle /swagger/* {
+        reverse_proxy backend:5000
+    }
+
+    # Фронтенд (Angular SPA)
+    handle {
+        root * /srv/frontend
+        try_files {path} {path}/ /index.html
+        file_server
+
+        # Защита от кэширования главной точки входа SPA
+        @index {
+            path / /index.html
+        }
+        header @index Cache-Control "no-cache, no-store, must-revalidate"
+
+        # Долгосрочное кэширование хешированных статических ассетов
+        @static {
+            path *.js *.css *.woff2 *.woff *.svg *.png *.jpg *.jpeg *.ico *.webp
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+    }
+
+    # Сжатие Zstandard / Gzip для текстовых ресурсов
+    encode zstd gzip
+
+    # Защитные заголовки
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}

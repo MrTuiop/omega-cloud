@@ -14,6 +14,10 @@ public class StorageNode
     public StorageNodeStatus Status { get; set; } = StorageNodeStatus.Online;
     public long TotalSpaceBytes { get; set; }
     public long AvailableSpaceBytes { get; set; }
+    public double? CpuLoad { get; set; }
+    public string? DiskStatus { get; set; }
+    public int? LatencyMs { get; set; }
+    public bool IsActive { get; set; } = true;
     public DateTime LastHeartbeatAt { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

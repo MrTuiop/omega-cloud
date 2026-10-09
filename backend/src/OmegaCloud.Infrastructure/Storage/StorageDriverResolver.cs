@@ -7,10 +7,21 @@ namespace OmegaCloud.Infrastructure.Storage;
 public class StorageDriverResolver : IStorageDriverResolver
 {
     private readonly LocalDiskStorageDriver _localDiskStorageDriver;
+    private readonly IRemoteNodeGateway _remoteNodeGateway;
+    private readonly RemoteNodeStorageDriver _defaultRemoteDriver;
 
     public StorageDriverResolver(LocalDiskStorageDriver localDiskStorageDriver)
+        : this(localDiskStorageDriver, null)
+    {
+    }
+
+    public StorageDriverResolver(
+        LocalDiskStorageDriver localDiskStorageDriver,
+        IRemoteNodeGateway? remoteNodeGateway)
     {
         _localDiskStorageDriver = localDiskStorageDriver;
+        _remoteNodeGateway = remoteNodeGateway!;
+        _defaultRemoteDriver = remoteNodeGateway != null ? new RemoteNodeStorageDriver(remoteNodeGateway) : null!;
     }
 
     public IStorageDriver GetDriver(StorageNodeType nodeType)
@@ -18,12 +29,18 @@ public class StorageDriverResolver : IStorageDriverResolver
         return nodeType switch
         {
             StorageNodeType.LocalDisk => _localDiskStorageDriver,
-            _ => _localDiskStorageDriver // In future milestones, RemoteNodeStorageDriver will be resolved here
+            StorageNodeType.RemoteDaemon => _defaultRemoteDriver,
+            _ => _localDiskStorageDriver
         };
     }
 
     public IStorageDriver GetDriverForNode(StorageNode node)
     {
-        return GetDriver(node.Type);
+        if (node.Type == StorageNodeType.RemoteDaemon)
+        {
+            return new RemoteNodeStorageDriver(node, _remoteNodeGateway);
+        }
+
+        return _localDiskStorageDriver;
     }
 }

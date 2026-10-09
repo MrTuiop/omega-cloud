@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  storage-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omega-storage-node
+    restart: unless-stopped
+    ports:
+      - "${STORAGE_NODE_PORT:-5001}:5001"
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      StorageNode__MasterBaseUrl: ${MASTER_BASE_URL:-http://master-server:5000}
+      StorageNode__RegistrationKey: ${NODE_REGISTRATION_KEY:-}
+      StorageNode__NodeId: ${NODE_ID:-}
+      StorageNode__NodeSecret: ${NODE_SECRET:-}
+      StorageNode__NodeName: ${NODE_NAME:-Omega-Storage-Node}
+      StorageNode__BaseUrl: ${NODE_BASE_URL:-}
+      StorageNode__IsBehindNat: ${NODE_IS_BEHIND_NAT:-}
+      StorageNode__StorageRootPath: "/app/storage"
+    volumes:
+      - ${STORAGE_PATH:-./data/storage}:/app/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

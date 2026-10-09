@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OmegaCloud.Application.Common.Exceptions;
+using OmegaCloud.Application.Common.Helpers;
 using OmegaCloud.Application.Common.Interfaces;
 using OmegaCloud.Application.Common.Models.Storage;
 using OmegaCloud.Application.DTOs.Files;
@@ -12,15 +13,19 @@ public class FileService : IFileService
 {
     private readonly IAppDbContext _dbContext;
     private readonly IStorageDriverResolver _driverResolver;
-
-    private static readonly char[] InvalidChars = { '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0' };
+    private readonly IRealtimeNotifier _notifier;
+    private readonly IAuditService? _auditService;
 
     public FileService(
         IAppDbContext dbContext,
-        IStorageDriverResolver driverResolver)
+        IStorageDriverResolver driverResolver,
+        IRealtimeNotifier? notifier = null,
+        IAuditService? auditService = null)
     {
         _dbContext = dbContext;
         _driverResolver = driverResolver;
+        _notifier = notifier ?? NullRealtimeNotifier.Instance;
+        _auditService = auditService;
     }
 
     public async Task<FileItemDto> UploadFileAsync(UploadFileStreamRequest request, Guid userId, CancellationToken ct = default)
@@ -28,15 +33,35 @@ public class FileService : IFileService
         var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw new UnauthorizedException("User not found.");
 
-        if (request.SizeBytes <= 0)
+        if (!user.IsActive)
+        {
+            throw new UnauthorizedException("User account is inactive.");
+        }
+
+        if (request.SizeBytes.HasValue && request.SizeBytes.Value < 0)
+        {
+            throw new ValidationException("File size cannot be negative.");
+        }
+
+        if (request.SizeBytes.HasValue && request.SizeBytes.Value == 0)
         {
             throw new ValidationException("Cannot upload an empty file.");
         }
 
-        if (user.UsedQuotaBytes + request.SizeBytes > user.AllocatedQuotaBytes)
+        if (request.SizeBytes.HasValue && request.SizeBytes.Value > 0)
         {
-            var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
-            throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, File size: {request.SizeBytes} bytes.");
+            if (user.UsedQuotaBytes + request.SizeBytes.Value > user.AllocatedQuotaBytes)
+            {
+                var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, File size: {request.SizeBytes.Value} bytes.");
+            }
+        }
+        else
+        {
+            if (user.UsedQuotaBytes >= user.AllocatedQuotaBytes)
+            {
+                throw new ValidationException("User quota exceeded. No available storage space remaining.");
+            }
         }
 
         var validatedFileName = ValidateFileName(request.FileName);
@@ -60,34 +85,64 @@ public class FileService : IFileService
             throw new ValidationException($"A file named '{validatedFileName}' already exists in this folder.");
         }
 
-        var localStorageNode = await _dbContext.StorageNodes
-            .FirstOrDefaultAsync(n => n.Type == StorageNodeType.LocalDisk && n.Status == StorageNodeStatus.Online, ct);
-
-        if (localStorageNode == null)
+        StorageNode targetNode;
+        if (request.StorageNodeId.HasValue)
         {
-            localStorageNode = await _dbContext.StorageNodes
-                .FirstOrDefaultAsync(n => n.Type == StorageNodeType.LocalDisk, ct);
+            targetNode = await _dbContext.StorageNodes
+                .FirstOrDefaultAsync(n => n.Id == request.StorageNodeId.Value, ct)
+                ?? throw new NotFoundException($"Target storage node with ID '{request.StorageNodeId.Value}' was not found.");
 
-            if (localStorageNode == null)
+            if (!targetNode.IsActive || targetNode.Status != StorageNodeStatus.Online)
             {
-                throw new InvalidOperationException("No local storage node configured.");
+                throw new ValidationException($"Target storage node '{targetNode.Name}' is not available (Status: {targetNode.Status}).");
             }
         }
+        else
+        {
+            targetNode = await _dbContext.StorageNodes
+                .FirstOrDefaultAsync(n => n.Type == StorageNodeType.LocalDisk && n.Status == StorageNodeStatus.Online && n.IsActive, ct)
+                ?? await _dbContext.StorageNodes
+                    .FirstOrDefaultAsync(n => n.Status == StorageNodeStatus.Online && n.IsActive, ct)
+                ?? throw new InvalidOperationException("No online storage node is available.");
+        }
 
-        var driver = _driverResolver.GetDriverForNode(localStorageNode);
+        var driver = _driverResolver.GetDriverForNode(targetNode);
 
         var writeResult = await driver.WriteAsync(
             request.Content,
             new StorageWriteOptions
             {
-                ExpectedSize = request.SizeBytes,
+                ExpectedSize = request.SizeBytes.HasValue && request.SizeBytes.Value > 0 ? request.SizeBytes.Value : null,
                 ContentType = request.ContentType
             },
             ct);
 
+        if (writeResult.SizeBytes <= 0)
+        {
+            throw new ValidationException("Cannot upload an empty file.");
+        }
+
+        if (user.UsedQuotaBytes + writeResult.SizeBytes > user.AllocatedQuotaBytes)
+        {
+            try
+            {
+                await driver.DeleteAsync(new StorageBlob
+                {
+                    StorageRelativePath = writeResult.StorageRelativePath
+                }, ct);
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+            throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, File size: {writeResult.SizeBytes} bytes.");
+        }
+
         // Deduplication check: Has this exact blob already been stored on this node?
         var existingBlob = await _dbContext.StorageBlobs
-            .FirstOrDefaultAsync(b => b.StorageNodeId == localStorageNode.Id &&
+            .FirstOrDefaultAsync(b => b.StorageNodeId == targetNode.Id &&
                                       b.Sha256Hash == writeResult.Sha256Hash &&
                                       b.SizeBytes == writeResult.SizeBytes, ct);
 
@@ -116,7 +171,7 @@ public class FileService : IFileService
             targetBlob = new StorageBlob
             {
                 Id = writeResult.BlobId,
-                StorageNodeId = localStorageNode.Id,
+                StorageNodeId = targetNode.Id,
                 Sha256Hash = writeResult.Sha256Hash,
                 SizeBytes = writeResult.SizeBytes,
                 StorageRelativePath = writeResult.StorageRelativePath,
@@ -154,7 +209,24 @@ public class FileService : IFileService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        return MapToFileDto(fileItem);
+        var dto = MapToFileDto(fileItem);
+        await _notifier.NotifyDirectoryChangedAsync(userId, request.FolderId, "Created", dto, ct);
+        await _notifier.NotifyQuotaUpdatedAsync(userId, user.UsedQuotaBytes, user.AllocatedQuotaBytes, ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                action: "FileUploaded",
+                resource: "Files",
+                resourceId: fileItem.Id.ToString(),
+                userId: userId,
+                username: user.Username,
+                ipAddress: null,
+                details: new { fileName = fileItem.Name, sizeBytes = fileItem.SizeBytes },
+                ct: ct);
+        }
+
+        return dto;
     }
 
     public async Task<FileMetadataDto> GetFileMetadataAsync(Guid fileId, Guid userId, CancellationToken ct = default)
@@ -198,6 +270,19 @@ public class FileService : IFileService
         var driver = _driverResolver.GetDriverForNode(file.StorageBlob.StorageNode);
 
         var directUrl = await driver.TryGenerateDirectDownloadUrlAsync(file.StorageBlob, TimeSpan.FromMinutes(15), ct);
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                action: "FileDownloaded",
+                resource: "Files",
+                resourceId: file.Id.ToString(),
+                userId: userId,
+                username: null,
+                ipAddress: null,
+                details: new { fileName = file.Name, sizeBytes = file.SizeBytes, isDirect = directUrl != null },
+                ct: ct);
+        }
+
         if (directUrl != null)
         {
             return new FileDownloadResult
@@ -225,6 +310,7 @@ public class FileService : IFileService
             .FirstOrDefaultAsync(f => f.Id == fileId && f.UserId == userId && !f.IsDeleted, ct)
             ?? throw new NotFoundException($"File with ID '{fileId}' was not found.");
 
+        var oldFolderId = file.FolderId;
         var targetFolderId = file.FolderId;
         var isMoving = false;
 
@@ -292,7 +378,20 @@ public class FileService : IFileService
         file.UpdatedAt = DateTime.UtcNow;
         await _dbContext.SaveChangesAsync(ct);
 
-        return MapToFileDto(file);
+        var dto = MapToFileDto(file);
+        if (isMoving && oldFolderId != file.FolderId)
+        {
+            // Notify both source and destination folders so both views refresh reactively
+            await _notifier.NotifyDirectoryChangedAsync(userId, oldFolderId, "Moved", dto, ct);
+            await _notifier.NotifyDirectoryChangedAsync(userId, file.FolderId, "Moved", dto, ct);
+            await _notifier.NotifyFileProgressAsync(userId, file.Id, 100.0, 0, ct);
+        }
+        else
+        {
+            await _notifier.NotifyDirectoryChangedAsync(userId, file.FolderId, "Updated", dto, ct);
+        }
+
+        return dto;
     }
 
     public async Task DeleteFileAsync(Guid fileId, Guid userId, CancellationToken ct = default)
@@ -306,68 +405,27 @@ public class FileService : IFileService
         file.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(ct);
+
+        var dto = MapToFileDto(file);
+        await _notifier.NotifyDirectoryChangedAsync(userId, file.FolderId, "Deleted", dto, ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                action: "FileDeleted",
+                resource: "Files",
+                resourceId: file.Id.ToString(),
+                userId: userId,
+                username: null,
+                ipAddress: null,
+                details: new { fileName = file.Name, sizeBytes = file.SizeBytes },
+                ct: ct);
+        }
     }
 
-    private static string ValidateFileName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            throw new ValidationException("File name cannot be empty.");
-        }
+    private static string ValidateFileName(string? name) => FileHelper.ValidateFileName(name);
 
-        var sanitized = Path.GetFileName(name).Trim();
-
-        if (string.IsNullOrWhiteSpace(sanitized))
-        {
-            throw new ValidationException("Invalid file name.");
-        }
-
-        if (sanitized.Length > 255)
-        {
-            throw new ValidationException("File name cannot exceed 255 characters.");
-        }
-
-        if (sanitized == "." || sanitized == "..")
-        {
-            throw new ValidationException("Invalid file name.");
-        }
-
-        if (sanitized.IndexOfAny(InvalidChars) >= 0)
-        {
-            throw new ValidationException("File name contains invalid characters.");
-        }
-
-        return sanitized;
-    }
-
-    private static string GetMimeType(string fileName)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        return ext switch
-        {
-            ".txt" => "text/plain",
-            ".html" or ".htm" => "text/html",
-            ".css" => "text/css",
-            ".js" => "application/javascript",
-            ".json" => "application/json",
-            ".xml" => "application/xml",
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            ".svg" => "image/svg+xml",
-            ".mp3" => "audio/mpeg",
-            ".wav" => "audio/wav",
-            ".mp4" => "video/mp4",
-            ".webm" => "video/webm",
-            ".mkv" => "video/x-matroska",
-            ".zip" => "application/zip",
-            ".tar" => "application/x-tar",
-            ".gz" => "application/gzip",
-            _ => "application/octet-stream"
-        };
-    }
+    private static string GetMimeType(string fileName) => FileHelper.GetMimeType(fileName);
 
     private static FileItemDto MapToFileDto(FileItem f) => new FileItemDto
     {
@@ -379,6 +437,8 @@ public class FileService : IFileService
         Extension = f.Extension,
         MimeType = f.MimeType,
         SizeBytes = f.SizeBytes,
+        IsDeleted = f.IsDeleted,
+        DeletedAt = f.DeletedAt,
         IsFavorite = f.IsFavorite,
         CreatedAt = f.CreatedAt,
         UpdatedAt = f.UpdatedAt

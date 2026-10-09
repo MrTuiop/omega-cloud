@@ -1,0 +1,83 @@
+// ==========================================
+// Omega Cloud - Design Tokens & Variables
+// Inspired by macOS Sequoia / iOS 18 Design
+// ==========================================
+
+$font-apple: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Inter", "Helvetica Neue", sans-serif;
+$font-mono: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+$ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+$ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+:root {
+  --omega-font-family: #{$font-apple};
+  --omega-font-mono: #{$font-mono};
+  --omega-ease-spring: #{$ease-spring};
+  --omega-ease-smooth: #{$ease-smooth};
+
+  // Border radius tokens
+  --omega-radius-sm: 8px;
+  --omega-radius-md: 12px;
+  --omega-radius-lg: 18px;
+  --omega-radius-xl: 24px;
+  --omega-radius-pill: 9999px;
+
+  // Accents
+  --omega-accent: #0071e3;
+  --omega-accent-hover: #0077ed;
+  --omega-accent-subtle: rgba(0, 113, 227, 0.12);
+  --omega-accent-gradient: linear-gradient(135deg, #0071e3 0%, #4facfe 100%);
+  --omega-danger: #ff453a;
+  --omega-danger-subtle: rgba(255, 69, 58, 0.15);
+  --omega-warning: #ff9f0a;
+  --omega-warning-subtle: rgba(255, 159, 10, 0.15);
+  --omega-success: #30d158;
+  --omega-success-subtle: rgba(48, 209, 88, 0.15);
+  --omega-purple: #bf5af2;
+  --omega-purple-subtle: rgba(191, 90, 242, 0.15);
+
+  // Light Theme Defaults
+  --omega-bg-canvas: #f2f5f9;
+  --omega-bg-gradient: radial-gradient(circle at 10% 20%, rgba(216, 235, 255, 0.7) 0%, rgba(240, 244, 250, 0.5) 45%, rgba(255, 238, 245, 0.6) 90%);
+  --omega-glass-bg: rgba(255, 255, 255, 0.65);
+  --omega-glass-bg-hover: rgba(255, 255, 255, 0.82);
+  --omega-glass-bg-elevated: rgba(255, 255, 255, 0.78);
+  --omega-glass-bg-sunken: rgba(240, 243, 248, 0.6);
+  --omega-glass-border: rgba(255, 255, 255, 0.55);
+  --omega-glass-border-subtle: rgba(0, 0, 0, 0.08);
+  --omega-glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.8);
+  --omega-shadow-sm: 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --omega-shadow-md: 0 8px 24px 0 rgba(0, 0, 0, 0.08);
+  --omega-shadow-lg: 0 16px 40px 0 rgba(0, 0, 0, 0.12);
+  --omega-shadow-dropdown: 0 12px 36px 0 rgba(0, 0, 0, 0.12), 0 0 1px 1px rgba(0, 0, 0, 0.05);
+
+  --omega-text-primary: #1d1d1f;
+  --omega-text-secondary: #515154;
+  --omega-text-muted: #86868b;
+  --omega-text-inverse: #ffffff;
+
+  --omega-backdrop-blur: blur(24px) saturate(180%);
+  --omega-backdrop-blur-elevated: blur(32px) saturate(200%);
+}
+
+// Dark Theme Overrides
+[data-theme="dark"] {
+  --omega-bg-canvas: #0e0f12;
+  --omega-bg-gradient: radial-gradient(circle at 15% 15%, rgba(28, 42, 66, 0.6) 0%, rgba(14, 15, 18, 0.8) 50%, rgba(45, 20, 52, 0.45) 90%);
+  --omega-glass-bg: rgba(30, 32, 38, 0.70);
+  --omega-glass-bg-hover: rgba(42, 45, 54, 0.85);
+  --omega-glass-bg-elevated: rgba(36, 38, 46, 0.88);
+  --omega-glass-bg-sunken: rgba(18, 19, 23, 0.7);
+  --omega-glass-border: rgba(255, 255, 255, 0.12);
+  --omega-glass-border-subtle: rgba(255, 255, 255, 0.06);
+  --omega-glass-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  --omega-shadow-sm: 0 2px 10px 0 rgba(0, 0, 0, 0.35);
+  --omega-shadow-md: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+  --omega-shadow-lg: 0 20px 50px 0 rgba(0, 0, 0, 0.55);
+  --omega-shadow-dropdown: 0 16px 40px 0 rgba(0, 0, 0, 0.55), 0 0 1px 1px rgba(255, 255, 255, 0.1);
+
+  --omega-text-primary: #f5f5f7;
+  --omega-text-secondary: #a1a1a6;
+  --omega-text-muted: #6e6e73;
+  --omega-text-inverse: #000000;
+}

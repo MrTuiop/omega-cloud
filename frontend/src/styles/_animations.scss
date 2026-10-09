@@ -1,0 +1,70 @@
+// ==========================================
+// Omega Cloud - Apple Spring Animations
+// ==========================================
+
+@keyframes appleScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes appleFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appleSlideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes appleSlideInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(0, 113, 227, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(0, 113, 227, 0.65);
+  }
+}
+
+.anim-scale-in {
+  animation: appleScaleIn 0.3s var(--omega-ease-spring) forwards;
+}
+
+.anim-fade-in {
+  animation: appleFadeIn 0.2s ease-out forwards;
+}
+
+.anim-slide-in-right {
+  animation: appleSlideInRight 0.35s var(--omega-ease-spring) forwards;
+}
+
+.anim-slide-in-up {
+  animation: appleSlideInUp 0.3s var(--omega-ease-spring) forwards;
+}

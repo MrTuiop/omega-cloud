@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
+using OmegaCloud.Api.Hubs;
 using OmegaCloud.Api.Middleware;
 using OmegaCloud.Api.Services;
 using OmegaCloud.Application;
@@ -17,7 +18,39 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
-builder.Services.AddControllers();
+// Realtime & SignalR
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
+
+// CORS configuration for Angular client & WebSockets
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("CorsPolicy", policy =>
+    {
+        policy.SetIsOriginAllowed(_ => true)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = long.MaxValue;
+    options.ValueLengthLimit = int.MaxValue;
+    options.MultipartHeadersLengthLimit = int.MaxValue;
+});
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = null;
+});
+
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -60,35 +93,56 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger";
 });
 
+app.UseCors("CorsPolicy");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "Healthy",
+    timestamp = DateTime.UtcNow,
+    version = "1.0.0"
+})).AllowAnonymous();
 
-// Apply migrations and seed data on startup
+app.MapControllers();
+app.MapHub<OmegaHub>(OmegaHub.HubPath);
+
+// Apply migrations and seed data on startup with retry resilience
 using (var scope = app.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    try
+    const int maxMigrationRetries = 5;
+    for (int attempt = 1; attempt <= maxMigrationRetries; attempt++)
     {
-        if (db.Database.IsRelational())
+        try
         {
-            logger.LogInformation("Applying database migrations...");
-            await db.Database.MigrateAsync();
-        }
-        else
-        {
-            await db.Database.EnsureCreatedAsync();
-        }
+            if (db.Database.IsRelational())
+            {
+                logger.LogInformation("Applying database migrations (attempt {Attempt}/{MaxRetries})...", attempt, maxMigrationRetries);
+                await db.Database.MigrateAsync();
+            }
+            else
+            {
+                await db.Database.EnsureCreatedAsync();
+            }
 
-        var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-        await seeder.SeedAsync();
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Database migration/seeding was skipped or encountered an error. If PostgreSQL is not currently running, verify connection settings.");
+            var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+            await seeder.SeedAsync();
+            logger.LogInformation("Database migration and seeding completed successfully.");
+            break;
+        }
+        catch (Exception ex) when (attempt < maxMigrationRetries)
+        {
+            logger.LogWarning(ex, "Database migration attempt {Attempt} failed, retrying in 2 seconds...", attempt);
+            await Task.Delay(2000);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Database migration/seeding was skipped or encountered an error. If PostgreSQL is not currently running, verify connection settings.");
+        }
     }
 }
 

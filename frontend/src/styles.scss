@@ -1,0 +1,83 @@
+// Omega Cloud Global Styles
+@use 'styles/variables' as *;
+@use 'styles/glass' as *;
+@use 'styles/animations' as *;
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--omega-font-family);
+  background: var(--omega-bg-canvas);
+  background-image: var(--omega-bg-gradient);
+  background-attachment: fixed;
+  color: var(--omega-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+// Apple-style subtle scrollbars
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 128, 0.25);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+
+  &:hover {
+    background: rgba(120, 120, 128, 0.45);
+    background-clip: padding-box;
+  }
+}
+
+// Global button reset
+button {
+  font-family: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--omega-text-primary);
+  background: var(--omega-glass-bg-sunken);
+  border: 1px solid var(--omega-glass-border);
+  border-radius: var(--omega-radius-md);
+  padding: 10px 14px;
+  outline: none;
+  transition: all 0.2s var(--omega-ease-smooth);
+
+  &::placeholder {
+    color: var(--omega-text-muted);
+  }
+
+  &:focus {
+    border-color: var(--omega-accent);
+    box-shadow: 0 0 0 3px var(--omega-accent-subtle);
+    background: var(--omega-glass-bg-hover);
+  }
+}
+
+// Prevent dragging images
+img {
+  -webkit-user-drag: none;
+}

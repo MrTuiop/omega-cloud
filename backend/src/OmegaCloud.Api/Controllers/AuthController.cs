@@ -17,15 +17,18 @@ public class AuthController : ControllerBase
 
     private readonly IAuthService _authService;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditService _auditService;
     private readonly JwtOptions _jwtOptions;
 
     public AuthController(
         IAuthService authService,
         ICurrentUser currentUser,
+        IAuditService auditService,
         IOptions<JwtOptions> jwtOptions)
     {
         _authService = authService;
         _currentUser = currentUser;
+        _auditService = auditService;
         _jwtOptions = jwtOptions.Value;
     }
 
@@ -44,6 +47,16 @@ public class AuthController : ControllerBase
         var response = await _authService.LoginAsync(request, ip, userAgent, ct);
 
         SetRefreshTokenCookie(response.RefreshToken);
+
+        await _auditService.LogAsync(
+            action: "UserLogin",
+            resource: "Auth",
+            resourceId: response.User.Id.ToString(),
+            userId: response.User.Id,
+            username: response.User.Username,
+            ipAddress: ip,
+            details: new { device = userAgent },
+            ct: ct);
 
         return Ok(response);
     }
@@ -96,6 +109,12 @@ public class AuthController : ControllerBase
         await _authService.LogoutAsync(userId, sessionId, rawToken, ct);
 
         DeleteRefreshTokenCookie();
+
+        if (userId != Guid.Empty)
+        {
+            var ip = GetClientIpAddress();
+            await _auditService.LogAsync("UserLogout", "Auth", userId.ToString(), userId, _currentUser.Username, ip, null, ct);
+        }
 
         return Ok(new { message = "Logged out successfully." });
     }

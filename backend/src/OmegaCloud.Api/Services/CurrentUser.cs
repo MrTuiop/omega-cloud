@@ -24,6 +24,10 @@ public class CurrentUser : ICurrentUser
         }
     }
 
+    public string? Username => _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Name)?.Value
+                           ?? _httpContextAccessor.HttpContext?.User?.FindFirst("unique_name")?.Value
+                           ?? _httpContextAccessor.HttpContext?.User?.FindFirst("username")?.Value;
+
     public Guid? SessionId
     {
         get

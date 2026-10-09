@@ -181,6 +181,206 @@ public class LocalDiskStorageDriver : IStorageDriver
         }
     }
 
+    public async Task<UploadChunkResult> WriteChunkAsync(
+        UploadSession session,
+        int chunkIndex,
+        Stream chunkStream,
+        string? expectedSha256 = null,
+        CancellationToken ct = default)
+    {
+        var sessionDir = Path.Combine(_storageRoot, "temp", "sessions", session.Id.ToString("N"));
+        EnsureDirectoryExists(sessionDir);
+
+        var chunkFilePath = Path.Combine(sessionDir, $"{chunkIndex}.part");
+        var tempFilePath = Path.Combine(sessionDir, $"{chunkIndex}.part.tmp");
+
+        long totalBytes = 0;
+        string hashHex;
+
+        try
+        {
+            using (var fileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            using (var incrementalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                var buffer = new byte[81920];
+                int bytesRead;
+
+                while ((bytesRead = await chunkStream.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer, 0, bytesRead, ct);
+                    incrementalHash.AppendData(buffer, 0, bytesRead);
+                    totalBytes += bytesRead;
+                }
+
+                await fileStream.FlushAsync(ct);
+                var hashBytes = incrementalHash.GetHashAndReset();
+                hashHex = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
+            if (totalBytes <= 0)
+            {
+                TryDeleteFile(tempFilePath);
+                throw new ValidationException("Chunk content cannot be empty.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(expectedSha256))
+            {
+                var expected = expectedSha256.Trim().ToLowerInvariant();
+                if (!string.Equals(hashHex, expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    TryDeleteFile(tempFilePath);
+                    throw new ValidationException($"Chunk SHA-256 mismatch. Expected: {expected}, Computed: {hashHex}");
+                }
+            }
+
+            if (File.Exists(chunkFilePath))
+            {
+                File.Delete(chunkFilePath);
+            }
+
+            File.Move(tempFilePath, chunkFilePath);
+
+            _logger.LogDebug("Successfully saved chunk {ChunkIndex} for session {SessionId} ({SizeBytes} bytes, SHA256: {Hash})",
+                chunkIndex, session.Id, totalBytes, hashHex);
+
+            return new UploadChunkResult
+            {
+                ChunkIndex = chunkIndex,
+                SizeBytes = totalBytes,
+                Sha256Hash = hashHex
+            };
+        }
+        catch (Exception ex)
+        {
+            TryDeleteFile(tempFilePath);
+            if (ex is ValidationException) throw;
+            _logger.LogError(ex, "Failed to write chunk {ChunkIndex} for session {SessionId}", chunkIndex, session.Id);
+            throw;
+        }
+    }
+
+    public async Task<StorageBlobResult> AssembleChunksAsync(UploadSession session, IReadOnlyList<UploadChunk> chunks, CancellationToken ct = default)
+    {
+        var sessionDir = Path.Combine(_storageRoot, "temp", "sessions", session.Id.ToString("N"));
+        if (!Directory.Exists(sessionDir))
+        {
+            throw new ValidationException($"Session temp directory not found for session '{session.Id}'.");
+        }
+
+        var orderedChunks = chunks.OrderBy(c => c.ChunkIndex).ToList();
+        if (orderedChunks.Count != session.TotalChunks)
+        {
+            throw new ValidationException($"Cannot assemble: Expected {session.TotalChunks} chunks, but found {orderedChunks.Count}.");
+        }
+
+        for (int i = 0; i < session.TotalChunks; i++)
+        {
+            if (orderedChunks[i].ChunkIndex != i)
+            {
+                throw new ValidationException($"Missing chunk at index {i}.");
+            }
+            var partPath = Path.Combine(sessionDir, $"{i}.part");
+            if (!File.Exists(partPath))
+            {
+                throw new ValidationException($"Chunk file {i}.part was not found on disk.");
+            }
+        }
+
+        var tempDir = Path.Combine(_storageRoot, "temp");
+        EnsureDirectoryExists(tempDir);
+        var assembleTempPath = Path.Combine(tempDir, $"assemble_{session.Id:N}.tmp");
+
+        long totalBytes = 0;
+        string hashHex;
+
+        try
+        {
+            using (var destStream = new FileStream(assembleTempPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            using (var incrementalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                var buffer = new byte[81920];
+                for (int i = 0; i < session.TotalChunks; i++)
+                {
+                    var partPath = Path.Combine(sessionDir, $"{i}.part");
+                    using (var chunkStream = new FileStream(partPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true))
+                    {
+                        int bytesRead;
+                        while ((bytesRead = await chunkStream.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
+                        {
+                            await destStream.WriteAsync(buffer, 0, bytesRead, ct);
+                            incrementalHash.AppendData(buffer, 0, bytesRead);
+                            totalBytes += bytesRead;
+                        }
+                    }
+                }
+
+                await destStream.FlushAsync(ct);
+                var hashBytes = incrementalHash.GetHashAndReset();
+                hashHex = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
+            if (!string.IsNullOrWhiteSpace(session.ExpectedSha256))
+            {
+                var expected = session.ExpectedSha256.Trim().ToLowerInvariant();
+                if (!string.Equals(hashHex, expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    TryDeleteFile(assembleTempPath);
+                    throw new ValidationException($"Checksum mismatch. Expected SHA-256: {expected}, Computed: {hashHex}");
+                }
+            }
+
+            if (session.TotalSizeBytes != totalBytes)
+            {
+                TryDeleteFile(assembleTempPath);
+                throw new ValidationException($"File size mismatch. Expected: {session.TotalSizeBytes} bytes, Assembled: {totalBytes} bytes");
+            }
+
+            var blobId = Guid.NewGuid();
+            var shard1 = hashHex[..2];
+            var shard2 = hashHex.Substring(2, 2);
+            var relativePath = $"blobs/{shard1}/{shard2}/{blobId}.blob";
+            var targetDirectory = Path.Combine(_storageRoot, "blobs", shard1, shard2);
+            var finalFilePath = Path.Combine(targetDirectory, $"{blobId}.blob");
+
+            EnsureDirectoryExists(targetDirectory);
+
+            if (File.Exists(finalFilePath))
+            {
+                File.Delete(finalFilePath);
+            }
+
+            File.Move(assembleTempPath, finalFilePath);
+
+            TryDeleteDirectory(sessionDir);
+
+            _logger.LogDebug("Successfully assembled {TotalChunks} chunks into blob {BlobId} at {RelativePath} ({SizeBytes} bytes)",
+                session.TotalChunks, blobId, relativePath, totalBytes);
+
+            return new StorageBlobResult
+            {
+                BlobId = blobId,
+                Sha256Hash = hashHex,
+                SizeBytes = totalBytes,
+                StorageRelativePath = relativePath
+            };
+        }
+        catch (Exception ex)
+        {
+            TryDeleteFile(assembleTempPath);
+            if (ex is ValidationException) throw;
+            _logger.LogError(ex, "Failed to assemble chunks for session {SessionId}", session.Id);
+            throw;
+        }
+    }
+
+    public Task DeleteSessionTempDataAsync(UploadSession session, CancellationToken ct = default)
+    {
+        var sessionDir = Path.Combine(_storageRoot, "temp", "sessions", session.Id.ToString("N"));
+        TryDeleteDirectory(sessionDir);
+        return Task.CompletedTask;
+    }
+
+
     private string ResolveAndValidatePath(string relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath))
@@ -246,6 +446,21 @@ public class LocalDiskStorageDriver : IStorageDriver
         catch
         {
             // Shard cleanup is best-effort
+        }
+    }
+
+    private static void TryDeleteDirectory(string dirPath)
+    {
+        try
+        {
+            if (Directory.Exists(dirPath))
+            {
+                Directory.Delete(dirPath, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup
         }
     }
 }

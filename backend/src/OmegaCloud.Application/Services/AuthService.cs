@@ -12,17 +12,20 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtProvider _jwtProvider;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IRealtimeNotifier _notifier;
 
     public AuthService(
         IAppDbContext dbContext,
         IPasswordHasher passwordHasher,
         IJwtProvider jwtProvider,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IRealtimeNotifier? notifier = null)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtProvider = jwtProvider;
         _dateTimeProvider = dateTimeProvider;
+        _notifier = notifier ?? NullRealtimeNotifier.Instance;
     }
 
     public async Task<LoginResponse> LoginAsync(
@@ -132,6 +135,7 @@ public class AuthService : IAuthService
             }
 
             await _dbContext.SaveChangesAsync(ct);
+            await _notifier.NotifyForceLogoutAsync(session.UserId, "Security alert: sessions terminated due to suspicious token reuse.", null, ct);
             throw new UnauthorizedException("Refresh token reuse detected. All active sessions have been terminated for security.");
         }
 
@@ -197,6 +201,7 @@ public class AuthService : IAuthService
     {
         var now = _dateTimeProvider.UtcNow;
         var hasChanges = false;
+        UserSession? sessionByHash = null;
 
         // If user is authenticated with a valid current session
         if (currentSessionId.HasValue && userId != Guid.Empty)
@@ -215,7 +220,7 @@ public class AuthService : IAuthService
         if (!string.IsNullOrWhiteSpace(rawRefreshToken))
         {
             var tokenHash = _jwtProvider.HashRefreshToken(rawRefreshToken);
-            var sessionByHash = await _dbContext.UserSessions
+            sessionByHash = await _dbContext.UserSessions
                 .FirstOrDefaultAsync(s => s.RefreshTokenHash == tokenHash && (userId == Guid.Empty || s.UserId == userId), ct);
 
             if (sessionByHash != null && sessionByHash.RevokedAt == null)
@@ -228,6 +233,14 @@ public class AuthService : IAuthService
         if (hasChanges)
         {
             await _dbContext.SaveChangesAsync(ct);
+
+            var affectedSessionId = currentSessionId ?? sessionByHash?.Id;
+            var affectedUserId = userId != Guid.Empty ? userId : sessionByHash?.UserId ?? Guid.Empty;
+
+            if (affectedSessionId.HasValue && affectedUserId != Guid.Empty)
+            {
+                await _notifier.NotifyForceLogoutAsync(affectedUserId, "Logged out.", affectedSessionId.Value, ct);
+            }
         }
     }
 
@@ -281,6 +294,7 @@ public class AuthService : IAuthService
         {
             session.RevokedAt = _dateTimeProvider.UtcNow;
             await _dbContext.SaveChangesAsync(ct);
+            await _notifier.NotifyForceLogoutAsync(userId, "Session was revoked.", sessionId, ct);
         }
     }
 

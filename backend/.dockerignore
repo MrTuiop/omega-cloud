@@ -1,0 +1,23 @@
+# Root and recursive build artifact exclusions
+bin/
+obj/
+**/bin/
+**/obj/
+publish-test/
+**/publish-test/
+
+# IDE and OS files
+.vs/
+**/.vs/
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+*.user
+**/*.user
+*.suo
+**/*.suo
+
+# Version control
+.git/
+**/.git/

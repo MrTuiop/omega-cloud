@@ -1,0 +1,14 @@
+namespace OmegaCloud.Application.DTOs.Admin;
+
+public class AuditLogDto
+{
+    public long Id { get; set; }
+    public Guid? UserId { get; set; }
+    public string? UserName { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public string Resource { get; set; } = string.Empty;
+    public string? ResourceId { get; set; }
+    public string IpAddress { get; set; } = string.Empty;
+    public string? DetailsJson { get; set; }
+    public DateTime Timestamp { get; set; }
+}

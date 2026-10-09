@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omega-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-omega_cloud}
+      POSTGRES_USER: ${POSTGRES_USER:-omega_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-generate_super_strong_secret_password_here}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ${POSTGRES_DATA_PATH:-./data/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omega_admin} -d ${POSTGRES_DB:-omega_cloud}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omega-internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: omega-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: "http://+:5000"
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-omega_cloud};Username=${POSTGRES_USER:-omega_admin};Password=${POSTGRES_PASSWORD:-generate_super_strong_secret_password_here}"
+      Jwt__Secret: ${JWT_SECRET:-super_long_and_cryptographically_secure_jwt_secret_key_at_least_32_chars}
+      Jwt__Issuer: ${JWT_ISSUER:-OmegaCloudMaster}
+      Jwt__Audience: ${JWT_AUDIENCE:-OmegaCloudClients}
+      Jwt__AccessTokenExpirationMinutes: ${JWT_ACCESS_MINUTES:-15}
+      Jwt__RefreshTokenExpirationDays: ${JWT_REFRESH_DAYS:-30}
+      AdminSeed__Username: ${ADMIN_USERNAME:-admin}
+      AdminSeed__Email: ${ADMIN_EMAIL:-admin@omegacloud.local}
+      AdminSeed__Password: ${ADMIN_PASSWORD:-AdminPassword123!}
+      Storage__LocalRootPath: "/app/storage"
+    volumes:
+      - ${LOCAL_STORAGE_PATH:-./data/storage}:/app/storage
+    networks:
+      - omega-internal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: omega-frontend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/index.html > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - frontend-dist:/srv/frontend
+    networks:
+      - omega-internal
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: omega-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      CADDY_TLS: ${CADDY_TLS:-internal}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CADDY_DATA_PATH:-./data/caddy}:/data
+      - ${CADDY_CONFIG_PATH:-./data/caddy_config}:/config
+      - frontend-dist:/srv/frontend:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - omega-internal
+
+volumes:
+  frontend-dist:
+
+networks:
+  omega-internal:
+    driver: bridge

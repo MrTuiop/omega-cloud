@@ -33,6 +33,8 @@ public class FilesController : ControllerBase
     public async Task<ActionResult<FileItemDto>> UploadFile(
         IFormFile file,
         [FromForm] Guid? folderId,
+        [FromForm] Guid? storageNodeId,
+        [FromQuery] Guid? nodeId,
         CancellationToken ct)
     {
         var userId = GetCurrentUserId();
@@ -50,7 +52,8 @@ public class FilesController : ControllerBase
             FileName = file.FileName,
             ContentType = file.ContentType,
             SizeBytes = file.Length,
-            FolderId = folderId
+            FolderId = folderId,
+            StorageNodeId = storageNodeId ?? nodeId
         };
 
         var result = await _fileService.UploadFileAsync(request, userId, ct);

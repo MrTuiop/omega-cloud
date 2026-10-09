@@ -196,4 +196,196 @@ public class LocalDiskStorageDriverTests : IDisposable
         // Assert
         Assert.True(result);
     }
+
+    [Fact]
+    public async Task WriteChunkAsync_SavesChunkFile_WithCorrectSha256()
+    {
+        // Arrange
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 2,
+            TotalSizeBytes = 100
+        };
+        var chunkBytes = Encoding.UTF8.GetBytes("Chunk 0 data content");
+        using var stream = new MemoryStream(chunkBytes);
+        var expectedHash = Convert.ToHexString(SHA256.HashData(chunkBytes)).ToLowerInvariant();
+
+        // Act
+        var result = await _driver.WriteChunkAsync(session, 0, stream);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(0, result.ChunkIndex);
+        Assert.Equal(chunkBytes.Length, result.SizeBytes);
+        Assert.Equal(expectedHash, result.Sha256Hash);
+
+        var chunkFile = Path.Combine(_tempDirectory, "temp", "sessions", session.Id.ToString("N"), "0.part");
+        Assert.True(File.Exists(chunkFile));
+        var savedBytes = await File.ReadAllBytesAsync(chunkFile);
+        Assert.Equal(chunkBytes, savedBytes);
+    }
+
+    [Fact]
+    public async Task AssembleChunksAsync_ConcatenatesAllChunks_InOrder_AndCleansUpTemp()
+    {
+        // Arrange
+        var chunk0Bytes = Encoding.UTF8.GetBytes("Part 1: Hello ");
+        var chunk1Bytes = Encoding.UTF8.GetBytes("Part 2: World!");
+        var combinedBytes = Encoding.UTF8.GetBytes("Part 1: Hello Part 2: World!");
+        var expectedHash = Convert.ToHexString(SHA256.HashData(combinedBytes)).ToLowerInvariant();
+
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 2,
+            TotalSizeBytes = combinedBytes.Length,
+            ExpectedSha256 = expectedHash
+        };
+
+        using var stream0 = new MemoryStream(chunk0Bytes);
+        using var stream1 = new MemoryStream(chunk1Bytes);
+
+        var res0 = await _driver.WriteChunkAsync(session, 0, stream0);
+        var res1 = await _driver.WriteChunkAsync(session, 1, stream1);
+
+        var chunks = new List<UploadChunk>
+        {
+            new UploadChunk { ChunkIndex = 0, SizeBytes = res0.SizeBytes, Sha256Hash = res0.Sha256Hash },
+            new UploadChunk { ChunkIndex = 1, SizeBytes = res1.SizeBytes, Sha256Hash = res1.Sha256Hash }
+        };
+
+        // Act
+        var blobResult = await _driver.AssembleChunksAsync(session, chunks);
+
+        // Assert
+        Assert.NotNull(blobResult);
+        Assert.Equal(expectedHash, blobResult.Sha256Hash);
+        Assert.Equal(combinedBytes.Length, blobResult.SizeBytes);
+
+        var physicalPath = Path.Combine(_tempDirectory, blobResult.StorageRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        Assert.True(File.Exists(physicalPath));
+        var assembledBytes = await File.ReadAllBytesAsync(physicalPath);
+        Assert.Equal(combinedBytes, assembledBytes);
+
+        // Temp session dir should have been cleaned up
+        var sessionDir = Path.Combine(_tempDirectory, "temp", "sessions", session.Id.ToString("N"));
+        Assert.False(Directory.Exists(sessionDir));
+    }
+
+    [Fact]
+    public async Task AssembleChunksAsync_WithMismatchedExpectedSha256_ThrowsValidationException()
+    {
+        // Arrange
+        var chunkBytes = Encoding.UTF8.GetBytes("Single chunk content");
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 1,
+            TotalSizeBytes = chunkBytes.Length,
+            ExpectedSha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+        };
+
+        using var stream = new MemoryStream(chunkBytes);
+        var res = await _driver.WriteChunkAsync(session, 0, stream);
+        var chunks = new List<UploadChunk>
+        {
+            new UploadChunk { ChunkIndex = 0, SizeBytes = res.SizeBytes, Sha256Hash = res.Sha256Hash }
+        };
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ValidationException>(() => _driver.AssembleChunksAsync(session, chunks));
+    }
+
+    [Fact]
+    public async Task AssembleChunksAsync_WithMissingChunk_ThrowsValidationException()
+    {
+        // Arrange
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 2,
+            TotalSizeBytes = 100
+        };
+
+        var chunk0Bytes = Encoding.UTF8.GetBytes("Chunk 0 only");
+        using var stream = new MemoryStream(chunk0Bytes);
+        var res0 = await _driver.WriteChunkAsync(session, 0, stream);
+
+        var chunks = new List<UploadChunk>
+        {
+            new UploadChunk { ChunkIndex = 0, SizeBytes = res0.SizeBytes, Sha256Hash = res0.Sha256Hash }
+        };
+
+        // Act & Assert (chunk 1 is missing)
+        await Assert.ThrowsAsync<ValidationException>(() => _driver.AssembleChunksAsync(session, chunks));
+    }
+
+    [Fact]
+    public async Task DeleteSessionTempDataAsync_DeletesSessionDirectory()
+    {
+        // Arrange
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 1,
+            TotalSizeBytes = 50
+        };
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Temp data"));
+        await _driver.WriteChunkAsync(session, 0, stream);
+
+        var sessionDir = Path.Combine(_tempDirectory, "temp", "sessions", session.Id.ToString("N"));
+        Assert.True(Directory.Exists(sessionDir));
+
+        // Act
+        await _driver.DeleteSessionTempDataAsync(session);
+
+        // Assert
+        Assert.False(Directory.Exists(sessionDir));
+    }
+
+    [Fact]
+    public async Task WriteChunkAsync_WithMismatchedExpectedSha256_ThrowsAndDoesNotLeaveChunkFile()
+    {
+        // Arrange
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 1,
+            TotalSizeBytes = 50
+        };
+
+        var chunkBytes = Encoding.UTF8.GetBytes("Chunk test content");
+        using var stream = new MemoryStream(chunkBytes);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ValidationException>(() =>
+            _driver.WriteChunkAsync(session, 0, stream, "0000000000000000000000000000000000000000000000000000000000000000"));
+
+        var chunkFile = Path.Combine(_tempDirectory, "temp", "sessions", session.Id.ToString("N"), "0.part");
+        Assert.False(File.Exists(chunkFile));
+    }
+
+    [Fact]
+    public async Task WriteChunkAsync_EmptyStream_ThrowsValidationExceptionAndCleansUp()
+    {
+        // Arrange
+        var session = new UploadSession
+        {
+            Id = Guid.NewGuid(),
+            TotalChunks = 1,
+            TotalSizeBytes = 0
+        };
+
+        using var stream = new MemoryStream(Array.Empty<byte>());
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+            _driver.WriteChunkAsync(session, 0, stream));
+        Assert.Contains("empty", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        var chunkFile = Path.Combine(_tempDirectory, "temp", "sessions", session.Id.ToString("N"), "0.part");
+        Assert.False(File.Exists(chunkFile));
+    }
 }
