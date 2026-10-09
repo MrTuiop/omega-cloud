@@ -15,6 +15,9 @@ RUN npm run build
 FROM alpine:3.20 AS runtime
 WORKDIR /srv/frontend
 
+# Install busybox-extras to provide httpd applet (omitted in minimal alpine busybox)
+RUN apk add --no-cache busybox-extras
+
 # Copy compiled assets from build stage
 COPY --from=build /app/dist/frontend/browser/ /srv/frontend-build/
 
@@ -24,4 +27,5 @@ EXPOSE 80
 HEALTHCHECK --interval=5s --timeout=3s --retries=5 \
   CMD wget -qO- http://127.0.0.1:80/index.html > /dev/null || exit 1
 
-CMD ["sh", "-c", "mkdir -p /srv/frontend && cp -a /srv/frontend-build/. /srv/frontend/ && exec busybox httpd -f -p 80 -h /srv/frontend"]
+CMD ["sh", "-c", "mkdir -p /srv/frontend && cp -a /srv/frontend-build/. /srv/frontend/ && exec busybox-extras httpd -f -p 80 -h /srv/frontend"]
+
