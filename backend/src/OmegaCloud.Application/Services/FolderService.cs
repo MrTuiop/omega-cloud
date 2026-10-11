@@ -102,12 +102,13 @@ public class FolderService : IFolderService
     {
         var validatedName = ValidateFolderName(request.Name);
 
+        Folder? parentFolder = null;
         if (request.ParentFolderId.HasValue)
         {
-            var parentExists = await _dbContext.Folders
-                .AnyAsync(f => f.Id == request.ParentFolderId.Value && f.UserId == userId && !f.IsDeleted, ct);
+            parentFolder = await _dbContext.Folders
+                .FirstOrDefaultAsync(f => f.Id == request.ParentFolderId.Value && f.UserId == userId && !f.IsDeleted, ct);
 
-            if (!parentExists)
+            if (parentFolder == null)
             {
                 throw new NotFoundException($"Parent folder with ID '{request.ParentFolderId.Value}' was not found.");
             }
@@ -129,6 +130,7 @@ public class FolderService : IFolderService
             ParentFolderId = request.ParentFolderId,
             Name = validatedName,
             Color = request.Color?.Trim(),
+            IsShared = parentFolder?.IsShared ?? (request.IsShared ?? false),
             IsDeleted = false,
             CreatedAt = now,
             UpdatedAt = now
@@ -383,6 +385,7 @@ public class FolderService : IFolderService
         ParentFolderId = f.ParentFolderId,
         Name = f.Name,
         Color = f.Color,
+        IsShared = f.IsShared,
         IsDeleted = f.IsDeleted,
         DeletedAt = f.DeletedAt,
         CreatedAt = f.CreatedAt,
@@ -399,6 +402,7 @@ public class FolderService : IFolderService
         Extension = f.Extension,
         MimeType = f.MimeType,
         SizeBytes = f.SizeBytes,
+        IsShared = f.IsShared,
         IsDeleted = f.IsDeleted,
         DeletedAt = f.DeletedAt,
         IsFavorite = f.IsFavorite,

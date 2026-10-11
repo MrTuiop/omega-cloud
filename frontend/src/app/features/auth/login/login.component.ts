@@ -101,12 +101,6 @@ import { ThemeService } from '../../../core/services/theme.service';
               </app-glass-button>
             </div>
           </form>
-
-          <div class="default-hint">
-            <span>Seed Admin:</span>
-            <code>admin / OmegaAdmin2026!</code>
-            <button type="button" class="quick-fill-btn" (click)="fillDefaults()">Fill</button>
-          </div>
         </app-glass-card>
       </div>
     </div>

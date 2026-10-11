@@ -15,19 +15,22 @@ public class AdminUserService : IAdminUserService
     private readonly IRealtimeNotifier _notifier;
     private readonly ICurrentUser _currentUser;
     private readonly IAuditService _auditService;
+    private readonly ISessionRevocationCache? _revocationCache;
 
     public AdminUserService(
         IAppDbContext db,
         IPasswordHasher passwordHasher,
         IRealtimeNotifier notifier,
         ICurrentUser currentUser,
-        IAuditService auditService)
+        IAuditService auditService,
+        ISessionRevocationCache? revocationCache = null)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _notifier = notifier;
         _currentUser = currentUser;
         _auditService = auditService;
+        _revocationCache = revocationCache;
     }
 
     public async Task<IReadOnlyList<AdminUserDto>> GetAllUsersAsync(CancellationToken ct = default)
@@ -51,6 +54,9 @@ public class AdminUserService : IAdminUserService
             IsActive = u.IsActive,
             CreatedAt = u.CreatedAt,
             UpdatedAt = u.UpdatedAt,
+            LastActiveAt = u.Sessions.Any()
+                ? u.Sessions.OrderByDescending(s => s.LastActiveAt).Select(s => (DateTime?)s.LastActiveAt).FirstOrDefault()
+                : null,
             ActiveSessionsCount = u.Sessions.Count(s => s.RevokedAt == null && s.ExpiresAt > now)
         }).ToList();
     }
@@ -141,8 +147,23 @@ public class AdminUserService : IAdminUserService
         {
             if (!Enum.TryParse<UserRole>(request.Role, true, out role))
             {
-                throw new ValidationException($"Invalid role '{request.Role}'. Supported roles: Admin, User, Guest.");
+                throw new ValidationException($"Invalid role '{request.Role}'. Supported roles: Admin, User.");
             }
+        }
+
+        var targetQuota = request.AllocatedQuotaBytes ?? 107_374_182_400L; // 100 GB default
+
+        // Validate physical node capacity limit: sum(AllocatedQuotaBytes) <= sum(ActiveNodes.MaxCapacityBytes)
+        var totalActiveNodesCapacity = await _db.StorageNodes
+            .Where(n => n.IsActive)
+            .SumAsync(n => n.MaxCapacityBytes, ct);
+
+        var currentTotalAllocated = await _db.Users
+            .SumAsync(u => u.AllocatedQuotaBytes, ct);
+
+        if (currentTotalAllocated + targetQuota > totalActiveNodesCapacity)
+        {
+            throw new ValidationException($"Cannot allocate {targetQuota} bytes. Total user quotas ({currentTotalAllocated + targetQuota} bytes) would exceed active storage nodes capacity ({totalActiveNodesCapacity} bytes).");
         }
 
         var user = new User
@@ -152,7 +173,7 @@ public class AdminUserService : IAdminUserService
             Email = emailNormalized,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             Role = role,
-            AllocatedQuotaBytes = request.AllocatedQuotaBytes ?? 107_374_182_400L, // 100 GB default
+            AllocatedQuotaBytes = targetQuota,
             UsedQuotaBytes = 0,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
@@ -183,6 +204,7 @@ public class AdminUserService : IAdminUserService
             IsActive = user.IsActive,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
+            LastActiveAt = user.CreatedAt,
             ActiveSessionsCount = 0
         };
     }
@@ -218,7 +240,7 @@ public class AdminUserService : IAdminUserService
         {
             if (!Enum.TryParse<UserRole>(request.Role, true, out var role))
             {
-                throw new ValidationException($"Invalid role '{request.Role}'. Supported roles: Admin, User, Guest.");
+                throw new ValidationException($"Invalid role '{request.Role}'. Supported roles: Admin, User.");
             }
             user.Role = role;
         }
@@ -230,7 +252,21 @@ public class AdminUserService : IAdminUserService
                 throw new ValidationException("Allocated quota cannot be negative.");
             }
 
-            user.AllocatedQuotaBytes = request.AllocatedQuotaBytes.Value;
+            var targetQuota = request.AllocatedQuotaBytes.Value;
+            var totalActiveNodesCapacity = await _db.StorageNodes
+                .Where(n => n.IsActive)
+                .SumAsync(n => n.MaxCapacityBytes, ct);
+
+            var otherUsersAllocated = await _db.Users
+                .Where(u => u.Id != id)
+                .SumAsync(u => u.AllocatedQuotaBytes, ct);
+
+            if (otherUsersAllocated + targetQuota > totalActiveNodesCapacity)
+            {
+                throw new ValidationException($"Cannot allocate {targetQuota} bytes. Total user quotas ({otherUsersAllocated + targetQuota} bytes) would exceed active storage nodes capacity ({totalActiveNodesCapacity} bytes).");
+            }
+
+            user.AllocatedQuotaBytes = targetQuota;
             await _notifier.NotifyQuotaUpdatedAsync(user.Id, user.UsedQuotaBytes, user.AllocatedQuotaBytes, ct);
         }
 
@@ -244,6 +280,7 @@ public class AdminUserService : IAdminUserService
                 foreach (var s in activeSessions)
                 {
                     s.RevokedAt = DateTime.UtcNow;
+                    _revocationCache?.Revoke(s.Id);
                 }
                 await _notifier.NotifyForceLogoutAsync(user.Id, "Account has been deactivated.", null, ct);
             }
@@ -274,6 +311,7 @@ public class AdminUserService : IAdminUserService
             IsActive = user.IsActive,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
+            LastActiveAt = user.Sessions.OrderByDescending(s => s.LastActiveAt).Select(s => (DateTime?)s.LastActiveAt).FirstOrDefault() ?? user.UpdatedAt,
             ActiveSessionsCount = user.Sessions.Count(s => s.RevokedAt == null && s.ExpiresAt > now)
         };
     }
@@ -301,6 +339,7 @@ public class AdminUserService : IAdminUserService
         foreach (var session in user.Sessions.Where(s => s.RevokedAt == null))
         {
             session.RevokedAt = DateTime.UtcNow;
+            _revocationCache?.Revoke(session.Id);
         }
 
         await _db.SaveChangesAsync(ct);
@@ -333,6 +372,7 @@ public class AdminUserService : IAdminUserService
         foreach (var session in activeSessions)
         {
             session.RevokedAt = DateTime.UtcNow;
+            _revocationCache?.Revoke(session.Id);
         }
 
         await _db.SaveChangesAsync(ct);
@@ -370,6 +410,7 @@ public class AdminUserService : IAdminUserService
         if (session.RevokedAt == null)
         {
             session.RevokedAt = DateTime.UtcNow;
+            _revocationCache?.Revoke(sessionId);
             await _db.SaveChangesAsync(ct);
 
             await _notifier.NotifyForceLogoutAsync(user.Id, "Session has been terminated by administrator.", sessionId, ct);
@@ -406,6 +447,7 @@ public class AdminUserService : IAdminUserService
         foreach (var s in user.Sessions.Where(s => s.RevokedAt == null))
         {
             s.RevokedAt = DateTime.UtcNow;
+            _revocationCache?.Revoke(s.Id);
         }
 
         await _notifier.NotifyForceLogoutAsync(user.Id, "User account has been deleted.", null, ct);

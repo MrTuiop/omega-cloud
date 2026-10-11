@@ -90,6 +90,35 @@ public static class DependencyInjection
                         context.Token = accessToken;
                     }
                     return Task.CompletedTask;
+                },
+                OnTokenValidated = async context =>
+                {
+                    var sessionIdClaim = context.Principal?.FindFirst("session_id")?.Value;
+                    if (string.IsNullOrEmpty(sessionIdClaim) || !Guid.TryParse(sessionIdClaim, out var sessionId))
+                    {
+                        context.Fail("Missing or invalid session identifier.");
+                        return;
+                    }
+
+                    var revocationCache = context.HttpContext.RequestServices.GetRequiredService<ISessionRevocationCache>();
+                    if (revocationCache.IsRevoked(sessionId))
+                    {
+                        context.Fail("Session has been revoked.");
+                        return;
+                    }
+
+                    var dbContext = context.HttpContext.RequestServices.GetRequiredService<IAppDbContext>();
+                    var session = await dbContext.UserSessions
+                        .AsNoTracking()
+                        .Include(s => s.User)
+                        .FirstOrDefaultAsync(s => s.Id == sessionId);
+
+                    if (session == null || session.RevokedAt != null || session.User == null || !session.User.IsActive)
+                    {
+                        revocationCache.Revoke(sessionId);
+                        context.Fail("Session has been revoked or user account is deactivated.");
+                        return;
+                    }
                 }
             };
         });
@@ -103,6 +132,8 @@ public static class DependencyInjection
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IHmacSigner, HmacSigner>();
+        services.AddSingleton<ISessionRevocationCache, SessionRevocationCache>();
+        services.AddSingleton<IThumbnailService, ThumbnailService>();
         services.AddScoped<IJwtProvider, JwtProvider>();
         services.AddScoped<DatabaseSeeder>();
 

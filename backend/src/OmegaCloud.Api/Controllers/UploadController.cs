@@ -44,10 +44,20 @@ public class UploadController : ControllerBase
         [FromQuery] string? fileName,
         [FromQuery] Guid? storageNodeId,
         [FromQuery] Guid? nodeId,
+        [FromQuery] OmegaCloud.Domain.Enums.ConflictResolutionStrategy? conflictResolution,
+        [FromQuery] OmegaCloud.Domain.Enums.ConflictResolutionStrategy? conflictStrategy,
         CancellationToken ct)
     {
         var userId = GetCurrentUserId();
         var effectiveNodeId = storageNodeId ?? nodeId;
+        var effectiveConflict = conflictResolution ?? conflictStrategy;
+        if (!effectiveConflict.HasValue && Request.Headers.TryGetValue("X-Conflict-Resolution", out var hConflict))
+        {
+            if (Enum.TryParse<OmegaCloud.Domain.Enums.ConflictResolutionStrategy>(hConflict.ToString(), true, out var parsedConflict))
+            {
+                effectiveConflict = parsedConflict;
+            }
+        }
 
         if (Request.HasFormContentType)
         {
@@ -67,6 +77,14 @@ public class UploadController : ControllerBase
             if (form.TryGetValue("folderId", out var formFolderVal) && Guid.TryParse(formFolderVal, out var parsedGuid))
             {
                 targetFolderId = parsedGuid;
+            }
+
+            if (!effectiveConflict.HasValue && form.TryGetValue("conflictResolution", out var formConfVal))
+            {
+                if (Enum.TryParse<OmegaCloud.Domain.Enums.ConflictResolutionStrategy>(formConfVal.ToString(), true, out var parsedConf))
+                {
+                    effectiveConflict = parsedConf;
+                }
             }
 
             if (!effectiveNodeId.HasValue)
@@ -90,7 +108,8 @@ public class UploadController : ControllerBase
                 ContentType = file.ContentType,
                 SizeBytes = file.Length,
                 FolderId = targetFolderId,
-                StorageNodeId = effectiveNodeId
+                StorageNodeId = effectiveNodeId,
+                ConflictResolution = effectiveConflict
             };
 
             var result = await _uploadService.DirectStreamUploadAsync(request, userId, ct);
@@ -172,7 +191,8 @@ public class UploadController : ControllerBase
                 ContentType = contentType,
                 SizeBytes = sizeBytes,
                 FolderId = targetFolderId,
-                StorageNodeId = effectiveNodeId
+                StorageNodeId = effectiveNodeId,
+                ConflictResolution = effectiveConflict
             };
 
             var result = await _uploadService.DirectStreamUploadAsync(request, userId, ct);

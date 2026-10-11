@@ -14,6 +14,7 @@ public class StorageNode
     public StorageNodeStatus Status { get; set; } = StorageNodeStatus.Online;
     public long TotalSpaceBytes { get; set; }
     public long AvailableSpaceBytes { get; set; }
+    public long MaxCapacityBytes { get; set; }
     public double? CpuLoad { get; set; }
     public string? DiskStatus { get; set; }
     public int? LatencyMs { get; set; }

@@ -68,7 +68,13 @@ export class ResumableUploaderService implements OnDestroy {
     this.activeSubscriptions.clear();
   }
 
-  enqueue(files: FileList | File[], targetFolderId?: string | null, targetFolderName?: string): void {
+  enqueue(
+    files: FileList | File[],
+    targetFolderId?: string | null,
+    targetFolderName?: string,
+    conflictResolution?: 'Replace' | 'Rename' | 'Skip',
+    isShared?: boolean
+  ): void {
     const newTasks: UploadTask[] = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -80,7 +86,7 @@ export class ResumableUploaderService implements OnDestroy {
           id: taskId,
           file,
           targetFolderId,
-          targetFolderName: targetFolderName ?? (targetFolderId ? 'Folder' : 'Root Drive'),
+          targetFolderName: targetFolderName ?? (targetFolderId ? 'Folder' : (isShared ? 'Shared Space' : 'Root Drive')),
           status: 'error',
           errorMessage: 'Empty files (0 bytes) cannot be uploaded.',
           progress: 0,
@@ -89,7 +95,9 @@ export class ResumableUploaderService implements OnDestroy {
           speedBytesPerSec: 0,
           currentChunkIndex: 0,
           totalChunks: 1,
-          startTime: Date.now()
+          startTime: Date.now(),
+          conflictResolution,
+          isShared
         };
         newTasks.push(task);
         continue;
@@ -101,7 +109,7 @@ export class ResumableUploaderService implements OnDestroy {
         id: taskId,
         file,
         targetFolderId,
-        targetFolderName: targetFolderName ?? (targetFolderId ? 'Folder' : 'Root Drive'),
+        targetFolderName: targetFolderName ?? (targetFolderId ? 'Folder' : (isShared ? 'Shared Space' : 'Root Drive')),
         status: 'queued',
         progress: 0,
         bytesUploaded: 0,
@@ -109,7 +117,9 @@ export class ResumableUploaderService implements OnDestroy {
         speedBytesPerSec: 0,
         currentChunkIndex: 0,
         totalChunks,
-        startTime: Date.now()
+        startTime: Date.now(),
+        conflictResolution,
+        isShared
       };
 
       newTasks.push(task);
@@ -237,7 +247,11 @@ export class ResumableUploaderService implements OnDestroy {
     let lastTime = Date.now();
 
     await new Promise<void>((resolve, reject) => {
-      const sub = this.apiService.directStreamUpload(task.file, task.targetFolderId).subscribe({
+      const upload$ = task.isShared
+        ? this.apiService.uploadSharedFile(task.file, task.targetFolderId, task.conflictResolution)
+        : this.apiService.directStreamUpload(task.file, task.targetFolderId, task.conflictResolution);
+
+      const sub = upload$.subscribe({
         next: event => {
           if (event.type === HttpEventType.UploadProgress && event.total) {
             const now = Date.now();
@@ -322,7 +336,9 @@ export class ResumableUploaderService implements OnDestroy {
           chunkSizeBytes: CHUNK_SIZE,
           totalChunks,
           expectedSha256: fileSha256,
-          targetFolderId: currentTask.targetFolderId ?? undefined
+          targetFolderId: currentTask.targetFolderId ?? undefined,
+          conflictResolution: currentTask.conflictResolution,
+          isShared: currentTask.isShared
         })
       );
 

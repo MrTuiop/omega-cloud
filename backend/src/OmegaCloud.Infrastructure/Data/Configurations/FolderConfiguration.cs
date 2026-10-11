@@ -24,6 +24,10 @@ public class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(f => f.Color)
             .HasMaxLength(32);
 
+        builder.Property(f => f.IsShared)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(f => f.IsDeleted)
             .HasDefaultValue(false)
             .IsRequired();
@@ -39,6 +43,8 @@ public class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.HasIndex(f => f.UserId);
         builder.HasIndex(f => f.ParentFolderId);
         builder.HasIndex(f => f.IsDeleted);
+        builder.HasIndex(f => f.IsShared);
+        builder.HasIndex(f => new { f.IsShared, f.ParentFolderId, f.IsDeleted });
         builder.HasIndex(f => new { f.UserId, f.ParentFolderId, f.Name, f.IsDeleted });
 
         builder.HasOne(f => f.User)

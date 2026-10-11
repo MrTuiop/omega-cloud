@@ -15,6 +15,7 @@ public class FileMetadataDto
     public string Extension { get; set; } = string.Empty;
     public string MimeType { get; set; } = string.Empty;
     public long SizeBytes { get; set; }
+    public bool IsShared { get; set; }
     public bool IsFavorite { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

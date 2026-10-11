@@ -16,10 +16,12 @@ public class OmegaHub : Hub<IOmegaHubClient>
     public const string AdminsGroup = "Admins";
 
     private readonly ILogger<OmegaHub> _logger;
+    private readonly IHubConnectionTracker? _connectionTracker;
 
-    public OmegaHub(ILogger<OmegaHub> logger)
+    public OmegaHub(ILogger<OmegaHub> logger, IHubConnectionTracker? connectionTracker = null)
     {
         _logger = logger;
+        _connectionTracker = connectionTracker;
     }
 
     public override async Task OnConnectedAsync()
@@ -35,6 +37,13 @@ public class OmegaHub : Hub<IOmegaHubClient>
         if (!string.IsNullOrEmpty(userId))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
+
+            if (Guid.TryParse(userId, out var parsedUserId))
+            {
+                var rawSessionId = user?.FindFirst("session_id")?.Value;
+                Guid? parsedSessionId = Guid.TryParse(rawSessionId, out var sId) ? sId : null;
+                _connectionTracker?.TrackConnection(Context.ConnectionId, parsedUserId, parsedSessionId, Context);
+            }
         }
 
         if (user != null)
@@ -69,6 +78,8 @@ public class OmegaHub : Hub<IOmegaHubClient>
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        _connectionTracker?.UntrackConnection(Context.ConnectionId);
+
         _logger.LogInformation(exception, "Client disconnected from OmegaHub: ConnectionId={ConnectionId}, UserId={UserId}",
             Context.ConnectionId, Context.UserIdentifier);
 

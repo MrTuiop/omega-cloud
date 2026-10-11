@@ -118,4 +118,64 @@ describe('ApiService', () => {
     expect(req.request.method).toBe('GET');
     req.flush({ cpuLoadPercentage: 10, databaseStatus: 'Healthy' });
   });
+
+  it('should call downloadZip', () => {
+    service.downloadZip(['f-1', 'f-2']).subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/download-zip`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ fileIds: ['f-1', 'f-2'], folderIds: undefined });
+    req.flush(new Blob());
+  });
+
+  it('should call bulkDelete', () => {
+    service.bulkDelete(['f-1'], ['folder-1']).subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/bulk-delete`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ fileIds: ['f-1'], folderIds: ['folder-1'] });
+    req.flush(null);
+  });
+
+  it('should call bulkMove', () => {
+    service.bulkMove(['f-1'], undefined, 'target-folder').subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/bulk-move`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ fileIds: ['f-1'], folderIds: undefined, targetFolderId: 'target-folder' });
+    req.flush(null);
+  });
+
+  it('should call getRecentFiles', () => {
+    service.getRecentFiles(5).subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/recent?limit=5`);
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('should call getSharedFolders', () => {
+    service.getSharedFolders('folder-abc').subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/shared/folders?folderId=folder-abc`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ folders: [], files: [], breadcrumbs: [] });
+  });
+
+  it('should call checkConflicts', () => {
+    service.checkConflicts(['test.txt'], 'folder-1', false).subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/check-conflicts`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ fileNames: ['test.txt'], folderId: 'folder-1', isShared: false });
+    req.flush(['test.txt']);
+  });
+
+  it('should call searchFiles with query, folderId, and scope', () => {
+    service.searchFiles('report', 'f-1', 'current').subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/search?q=report&scope=current&folderId=f-1`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ folders: [], files: [], breadcrumbs: [] });
+  });
 });

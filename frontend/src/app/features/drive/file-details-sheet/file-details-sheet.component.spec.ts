@@ -43,6 +43,7 @@ describe('FileDetailsSheetComponent', () => {
       sizeBytes: 2048,
       isDeleted: false,
       isFavorite: false,
+      isShared: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

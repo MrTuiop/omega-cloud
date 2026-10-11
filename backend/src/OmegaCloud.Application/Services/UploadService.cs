@@ -70,23 +70,54 @@ public class UploadService : IUploadService
         }
 
         var targetFolderId = request.FolderId ?? request.TargetFolderId;
+        Folder? targetFolder = null;
         if (targetFolderId.HasValue)
         {
-            var folderExists = await _dbContext.Folders
-                .AnyAsync(f => f.Id == targetFolderId.Value && f.UserId == userId && !f.IsDeleted, ct);
+            if (request.IsShared == true)
+            {
+                targetFolder = await _dbContext.Folders
+                    .FirstOrDefaultAsync(f => f.Id == targetFolderId.Value && f.IsShared && !f.IsDeleted, ct);
+            }
+            else
+            {
+                targetFolder = await _dbContext.Folders
+                    .FirstOrDefaultAsync(f => f.Id == targetFolderId.Value && (f.UserId == userId || f.IsShared) && !f.IsDeleted, ct);
+            }
 
-            if (!folderExists)
+            if (!targetFolderId.HasValue || targetFolder == null)
             {
                 throw new NotFoundException($"Destination folder with ID '{targetFolderId.Value}' was not found.");
             }
         }
 
-        var isDuplicate = await _dbContext.FileItems
-            .AnyAsync(f => f.UserId == userId && f.FolderId == targetFolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
+        var isShared = request.IsShared == true || (targetFolder?.IsShared ?? false);
 
-        if (isDuplicate)
+        var existingFile = isShared
+            ? await _dbContext.FileItems.FirstOrDefaultAsync(f => f.IsShared && f.FolderId == targetFolderId && f.Name == validatedFileName && !f.IsDeleted, ct)
+            : await _dbContext.FileItems.FirstOrDefaultAsync(f => f.UserId == userId && f.FolderId == targetFolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
+
+        var strategy = request.ConflictResolution ?? ConflictResolutionStrategy.None;
+        if (existingFile != null)
         {
-            throw new ValidationException($"A file named '{validatedFileName}' already exists in this folder.");
+            if (strategy == ConflictResolutionStrategy.Rename)
+            {
+                var existingNames = await (isShared
+                    ? _dbContext.FileItems.Where(f => f.IsShared && f.FolderId == targetFolderId && !f.IsDeleted).Select(f => f.Name).ToListAsync(ct)
+                    : _dbContext.FileItems.Where(f => f.UserId == userId && f.FolderId == targetFolderId && !f.IsDeleted).Select(f => f.Name).ToListAsync(ct));
+                var nameSet = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+                validatedFileName = FileHelper.GenerateUniqueFileName(validatedFileName, nameSet.Contains);
+            }
+            else if (strategy == ConflictResolutionStrategy.Replace)
+            {
+                if (existingFile.IsShared && existingFile.UserId != userId && user.Role != UserRole.Admin)
+                {
+                    throw new ForbiddenException("You do not have permission to replace this shared file. Only the author or an admin can replace it.");
+                }
+            }
+            else if (strategy != ConflictResolutionStrategy.Skip)
+            {
+                throw new ValidationException($"A file named '{validatedFileName}' already exists in this folder.");
+            }
         }
 
         var expectedSha256 = (request.ExpectedSha256 ?? request.Sha256)?.Trim().ToLowerInvariant();
@@ -155,23 +186,32 @@ public class UploadService : IUploadService
         }
         else
         {
-            storageNode = await _dbContext.StorageNodes
-                .FirstOrDefaultAsync(n => n.Type == StorageNodeType.LocalDisk && n.Status == StorageNodeStatus.Online, ct);
+            var candidateNodes = await _dbContext.StorageNodes
+                .Where(n => n.IsActive && n.Status == StorageNodeStatus.Online)
+                .ToListAsync(ct);
 
-            if (storageNode == null)
+            if (candidateNodes.Count == 0)
             {
-                storageNode = await _dbContext.StorageNodes
-                    .FirstOrDefaultAsync(n => n.Status == StorageNodeStatus.Online, ct);
+                candidateNodes = await _dbContext.StorageNodes
+                    .Where(n => n.IsActive)
+                    .ToListAsync(ct);
             }
 
-            if (storageNode == null)
+            if (candidateNodes.Count == 0)
             {
-                storageNode = await _dbContext.StorageNodes.FirstOrDefaultAsync(ct);
-                if (storageNode == null)
+                throw new InvalidOperationException("No storage node configured.");
+            }
+
+            // Balanced node selection: active node with maximum free volume: MaxCapacityBytes - UsedBytes bounded by physical AvailableSpaceBytes
+            storageNode = candidateNodes
+                .OrderByDescending(n =>
                 {
-                    throw new InvalidOperationException("No storage node configured.");
-                }
-            }
+                    var usedBytes = Math.Max(0, n.TotalSpaceBytes - n.AvailableSpaceBytes);
+                    var capacityRemaining = n.MaxCapacityBytes > 0 ? Math.Max(0, n.MaxCapacityBytes - usedBytes) : n.AvailableSpaceBytes;
+                    return Math.Min(n.AvailableSpaceBytes, capacityRemaining);
+                })
+                .ThenBy(n => n.Type == StorageNodeType.LocalDisk ? 0 : 1)
+                .First();
         }
 
         var sessionId = Guid.NewGuid();
@@ -190,6 +230,8 @@ public class UploadService : IUploadService
             TotalChunks = totalChunks,
             ExpectedSha256 = expectedSha256,
             Status = UploadSessionStatus.Created,
+            ConflictResolution = strategy,
+            IsShared = isShared,
             TempStoragePath = $"temp/sessions/{sessionId:N}",
             CreatedAt = now,
             ExpiresAt = expiresAt
@@ -371,14 +413,49 @@ public class UploadService : IUploadService
             throw new ValidationException("Upload session is currently assembling.");
         }
 
+        Folder? targetFolder = null;
         if (session.TargetFolderId.HasValue)
         {
-            var folderExists = await _dbContext.Folders
-                .AnyAsync(f => f.Id == session.TargetFolderId.Value && f.UserId == userId && !f.IsDeleted, ct);
+            if (session.IsShared)
+            {
+                targetFolder = await _dbContext.Folders
+                    .FirstOrDefaultAsync(f => f.Id == session.TargetFolderId.Value && f.IsShared && !f.IsDeleted, ct);
+            }
+            else
+            {
+                targetFolder = await _dbContext.Folders
+                    .FirstOrDefaultAsync(f => f.Id == session.TargetFolderId.Value && (f.UserId == userId || f.IsShared) && !f.IsDeleted, ct);
+            }
 
-            if (!folderExists)
+            if (targetFolder == null)
             {
                 throw new NotFoundException($"Destination folder with ID '{session.TargetFolderId.Value}' was not found or has been deleted.");
+            }
+        }
+
+        var existingFile = session.IsShared
+            ? await _dbContext.FileItems.Include(f => f.StorageBlob).FirstOrDefaultAsync(f => f.IsShared && f.FolderId == session.TargetFolderId && f.Name == session.FileName && !f.IsDeleted, ct)
+            : await _dbContext.FileItems.Include(f => f.StorageBlob).FirstOrDefaultAsync(f => f.UserId == userId && f.FolderId == session.TargetFolderId && f.Name == session.FileName && !f.IsDeleted, ct);
+
+        var strategy = request?.ConflictResolution ?? session.ConflictResolution;
+
+        if (existingFile != null)
+        {
+            if (strategy == ConflictResolutionStrategy.None)
+            {
+                throw new ValidationException($"A file named '{session.FileName}' already exists in this folder.");
+            }
+            else if (strategy == ConflictResolutionStrategy.Skip)
+            {
+                session.Status = UploadSessionStatus.Completed;
+                try
+                {
+                    var d = _driverResolver.GetDriverForNode(session.StorageNode);
+                    await d.DeleteSessionTempDataAsync(session, ct);
+                }
+                catch {}
+                await _dbContext.SaveChangesAsync(ct);
+                return MapToFileDto(existingFile);
             }
         }
 
@@ -397,18 +474,49 @@ public class UploadService : IUploadService
             throw new ValidationException($"Total uploaded chunks size ({totalUploadedBytes} bytes) does not match expected session size ({session.TotalSizeBytes} bytes).");
         }
 
-        if (user.UsedQuotaBytes + session.TotalSizeBytes > user.AllocatedQuotaBytes)
+        if (existingFile != null)
         {
-            var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
-            throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Upload size: {session.TotalSizeBytes} bytes.");
+            if (strategy == ConflictResolutionStrategy.Replace)
+            {
+                if (existingFile.IsShared && existingFile.UserId != userId && user.Role != UserRole.Admin)
+                {
+                    throw new ForbiddenException("You do not have permission to replace this shared file. Only the author or an admin can replace it.");
+                }
+
+                if (existingFile.UserId == userId)
+                {
+                    var quotaDiff = session.TotalSizeBytes - existingFile.SizeBytes;
+                    if (quotaDiff > 0 && user.UsedQuotaBytes + quotaDiff > user.AllocatedQuotaBytes)
+                    {
+                        var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                        throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Required: {quotaDiff} bytes.");
+                    }
+                }
+                else
+                {
+                    if (user.UsedQuotaBytes + session.TotalSizeBytes > user.AllocatedQuotaBytes)
+                    {
+                        var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                        throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Upload size: {session.TotalSizeBytes} bytes.");
+                    }
+                }
+            }
+            else if (strategy == ConflictResolutionStrategy.Rename)
+            {
+                if (user.UsedQuotaBytes + session.TotalSizeBytes > user.AllocatedQuotaBytes)
+                {
+                    var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                    throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Upload size: {session.TotalSizeBytes} bytes.");
+                }
+            }
         }
-
-        var isDuplicate = await _dbContext.FileItems
-            .AnyAsync(f => f.UserId == userId && f.FolderId == session.TargetFolderId && f.Name == session.FileName && !f.IsDeleted, ct);
-
-        if (isDuplicate)
+        else
         {
-            throw new ValidationException($"A file named '{session.FileName}' already exists in this folder.");
+            if (user.UsedQuotaBytes + session.TotalSizeBytes > user.AllocatedQuotaBytes)
+            {
+                var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Upload size: {session.TotalSizeBytes} bytes.");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request?.ExpectedSha256))
@@ -491,6 +599,84 @@ public class UploadService : IUploadService
         var mimeType = FileHelper.GetMimeType(session.FileName);
         var now = DateTime.UtcNow;
 
+
+        if (existingFile != null)
+        {
+            if (strategy == ConflictResolutionStrategy.Skip)
+            {
+                session.Status = UploadSessionStatus.Completed;
+                await _dbContext.SaveChangesAsync(ct);
+                return MapToFileDto(existingFile);
+            }
+            else if (strategy == ConflictResolutionStrategy.Replace)
+            {
+                var oldBlob = existingFile.StorageBlob;
+                var oldSizeBytes = existingFile.SizeBytes;
+
+                existingFile.StorageBlob = targetBlob;
+                existingFile.StorageBlobId = targetBlob.Id;
+                existingFile.SizeBytes = targetBlob.SizeBytes;
+                existingFile.MimeType = mimeType;
+                existingFile.Extension = extension;
+                existingFile.UpdatedAt = now;
+
+                if (existingFile.UserId == userId)
+                {
+                    var quotaDiff = targetBlob.SizeBytes - oldSizeBytes;
+                    user.UsedQuotaBytes += quotaDiff;
+                }
+                else
+                {
+                    var oldAuthor = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == existingFile.UserId, ct);
+                    if (oldAuthor != null)
+                    {
+                        oldAuthor.UsedQuotaBytes = Math.Max(0, oldAuthor.UsedQuotaBytes - oldSizeBytes);
+                        await _notifier.NotifyQuotaUpdatedAsync(oldAuthor.Id, oldAuthor.UsedQuotaBytes, oldAuthor.AllocatedQuotaBytes, ct);
+                    }
+                    user.UsedQuotaBytes += targetBlob.SizeBytes;
+                    existingFile.UserId = userId;
+                }
+
+                session.Status = UploadSessionStatus.Completed;
+
+                if (oldBlob != null && oldBlob.Id != targetBlob.Id)
+                {
+                    oldBlob.ReferenceCount = Math.Max(0, oldBlob.ReferenceCount - 1);
+                    if (oldBlob.ReferenceCount <= 0)
+                    {
+                        try
+                        {
+                            var oldNode = await _dbContext.StorageNodes.FindAsync(new object[] { oldBlob.StorageNodeId }, ct);
+                            if (oldNode != null)
+                            {
+                                var oldDriver = _driverResolver.GetDriverForNode(oldNode);
+                                await oldDriver.DeleteAsync(oldBlob, ct);
+                            }
+                        }
+                        catch {}
+                        _dbContext.StorageBlobs.Remove(oldBlob);
+                    }
+                }
+
+                await _dbContext.SaveChangesAsync(ct);
+
+                var replacedDto = MapToFileDto(existingFile);
+                await _notifier.NotifyDirectoryChangedAsync(userId, session.TargetFolderId, "Updated", replacedDto, ct);
+                await _notifier.NotifyQuotaUpdatedAsync(userId, user.UsedQuotaBytes, user.AllocatedQuotaBytes, ct);
+                return replacedDto;
+            }
+            else if (strategy == ConflictResolutionStrategy.Rename)
+            {
+                var existingNames = await (session.IsShared
+                    ? _dbContext.FileItems.Where(f => f.IsShared && f.FolderId == session.TargetFolderId && !f.IsDeleted).Select(f => f.Name).ToListAsync(ct)
+                    : _dbContext.FileItems.Where(f => f.UserId == userId && f.FolderId == session.TargetFolderId && !f.IsDeleted).Select(f => f.Name).ToListAsync(ct));
+                var nameSet = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+                var newName = FileHelper.GenerateUniqueFileName(session.FileName, nameSet.Contains);
+                session.FileName = newName;
+                extension = Path.GetExtension(newName).TrimStart('.').ToLowerInvariant();
+            }
+        }
+
         var fileItem = new FileItem
         {
             Id = Guid.NewGuid(),
@@ -501,6 +687,7 @@ public class UploadService : IUploadService
             Extension = extension,
             MimeType = mimeType,
             SizeBytes = targetBlob.SizeBytes,
+            IsShared = session.IsShared || (targetFolder?.IsShared ?? false),
             IsDeleted = false,
             IsFavorite = false,
             CreatedAt = now,
@@ -513,22 +700,7 @@ public class UploadService : IUploadService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        var resultDto = new FileItemDto
-        {
-            Id = fileItem.Id,
-            UserId = fileItem.UserId,
-            FolderId = fileItem.FolderId,
-            StorageBlobId = fileItem.StorageBlobId,
-            Name = fileItem.Name,
-            Extension = fileItem.Extension,
-            MimeType = fileItem.MimeType,
-            SizeBytes = fileItem.SizeBytes,
-            IsDeleted = fileItem.IsDeleted,
-            DeletedAt = fileItem.DeletedAt,
-            IsFavorite = fileItem.IsFavorite,
-            CreatedAt = fileItem.CreatedAt,
-            UpdatedAt = fileItem.UpdatedAt
-        };
+        var resultDto = MapToFileDto(fileItem);
 
         await _notifier.NotifyFileProgressAsync(userId, session.Id, 100.0, 0, ct);
         await _notifier.NotifyDirectoryChangedAsync(userId, session.TargetFolderId, "Uploaded", resultDto, ct);
@@ -607,4 +779,22 @@ public class UploadService : IUploadService
         await _dbContext.SaveChangesAsync(ct);
         await _notifier.NotifyFileProgressAsync(session.UserId, session.Id, 0, 0, ct);
     }
+
+    private static FileItemDto MapToFileDto(FileItem f) => new FileItemDto
+    {
+        Id = f.Id,
+        UserId = f.UserId,
+        FolderId = f.FolderId,
+        StorageBlobId = f.StorageBlobId,
+        Name = f.Name,
+        Extension = f.Extension,
+        MimeType = f.MimeType,
+        SizeBytes = f.SizeBytes,
+        IsShared = f.IsShared,
+        IsDeleted = f.IsDeleted,
+        DeletedAt = f.DeletedAt,
+        IsFavorite = f.IsFavorite,
+        CreatedAt = f.CreatedAt,
+        UpdatedAt = f.UpdatedAt
+    };
 }

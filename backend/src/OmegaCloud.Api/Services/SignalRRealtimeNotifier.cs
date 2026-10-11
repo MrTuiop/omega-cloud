@@ -11,13 +11,16 @@ public class SignalRRealtimeNotifier : IRealtimeNotifier
 {
     private readonly IHubContext<OmegaHub, IOmegaHubClient> _hubContext;
     private readonly ILogger<SignalRRealtimeNotifier> _logger;
+    private readonly IHubConnectionTracker? _connectionTracker;
 
     public SignalRRealtimeNotifier(
         IHubContext<OmegaHub, IOmegaHubClient> hubContext,
-        ILogger<SignalRRealtimeNotifier> logger)
+        ILogger<SignalRRealtimeNotifier> logger,
+        IHubConnectionTracker? connectionTracker = null)
     {
         _hubContext = hubContext;
         _logger = logger;
+        _connectionTracker = connectionTracker;
     }
 
     /// <inheritdoc />
@@ -83,11 +86,9 @@ public class SignalRRealtimeNotifier : IRealtimeNotifier
             {
                 await _hubContext.Clients.User(userId.ToString()).DirectoryChanged(folderId, changeType, item);
             }
-            else
-            {
-                var folderGroup = OmegaHub.GetFolderGroupName(folderId);
-                await _hubContext.Clients.Group(folderGroup).DirectoryChanged(folderId, changeType, item);
-            }
+
+            var folderGroup = OmegaHub.GetFolderGroupName(folderId);
+            await _hubContext.Clients.Group(folderGroup).DirectoryChanged(folderId, changeType, item);
         }
         catch (Exception ex)
         {
@@ -128,11 +129,13 @@ public class SignalRRealtimeNotifier : IRealtimeNotifier
             {
                 _logger.LogInformation("Sending ForceLogout to session {SessionId}: Reason={Reason}", sessionId.Value, reason);
                 await _hubContext.Clients.Group($"session_{sessionId.Value}").ForceLogout(reason);
+                _connectionTracker?.AbortSession(sessionId.Value);
             }
             else
             {
                 _logger.LogInformation("Sending ForceLogout to user {UserId}: Reason={Reason}", userId, reason);
                 await _hubContext.Clients.User(userId.ToString()).ForceLogout(reason);
+                _connectionTracker?.AbortUser(userId);
             }
         }
         catch (Exception ex)

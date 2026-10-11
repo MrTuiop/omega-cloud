@@ -4,6 +4,7 @@ export interface FolderItem {
   parentFolderId?: string | null;
   name: string;
   color?: string | null;
+  isShared: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
   createdAt: string;
@@ -19,6 +20,7 @@ export interface FileItem {
   extension: string;
   mimeType: string;
   sizeBytes: number;
+  isShared: boolean;
   isDeleted: boolean;
   deletedAt?: string | null;
   isFavorite: boolean;
@@ -59,6 +61,7 @@ export interface FileMetadata {
   extension: string;
   mimeType: string;
   sizeBytes: number;
+  isShared: boolean;
   isFavorite: boolean;
   createdAt: string;
   updatedAt: string;

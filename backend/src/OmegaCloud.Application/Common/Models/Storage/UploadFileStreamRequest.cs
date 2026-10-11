@@ -8,4 +8,6 @@ public class UploadFileStreamRequest
     public long? SizeBytes { get; set; }
     public Guid? FolderId { get; set; }
     public Guid? StorageNodeId { get; set; }
+    public OmegaCloud.Domain.Enums.ConflictResolutionStrategy? ConflictResolution { get; set; }
+    public bool? IsShared { get; set; }
 }

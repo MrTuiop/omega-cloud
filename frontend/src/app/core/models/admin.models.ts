@@ -11,6 +11,7 @@ export interface AdminUser {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  lastActiveAt?: string | null;
   activeSessionsCount: number;
 }
 
@@ -45,6 +46,7 @@ export interface StorageNode {
   status: string; // 'Online' | 'Offline' | 'Degraded' | 'Maintenance'
   totalSpaceBytes: number;
   availableSpaceBytes: number;
+  maxCapacityBytes: number;
   usedSpaceBytes: number;
   freeSpacePercentage: number;
   usedSpacePercentage: number;
@@ -63,6 +65,7 @@ export interface UpdateStorageNodeRequest {
   baseUrl?: string;
   isBehindNat?: boolean;
   status?: string;
+  maxCapacityBytes?: number;
 }
 
 export interface GenerateNodeTokenRequest {

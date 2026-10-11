@@ -20,6 +20,8 @@ public class UploadSession
     public int TotalChunks { get; set; }
     public string? ExpectedSha256 { get; set; }
     public UploadSessionStatus Status { get; set; } = UploadSessionStatus.Created;
+    public ConflictResolutionStrategy ConflictResolution { get; set; } = ConflictResolutionStrategy.None;
+    public bool IsShared { get; set; } = false;
     public string TempStoragePath { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; }

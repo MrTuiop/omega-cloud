@@ -9,4 +9,5 @@ public class UpdateStorageNodeRequest
     public bool? IsBehindNat { get; set; }
     public StorageNodeStatus? Status { get; set; }
     public bool? IsActive { get; set; }
+    public long? MaxCapacityBytes { get; set; }
 }

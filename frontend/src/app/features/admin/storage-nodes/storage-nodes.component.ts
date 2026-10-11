@@ -180,6 +180,12 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                       <span class="storage-label">Total Capacity</span>
                       <span class="storage-val">{{ n.totalSpaceBytes | fileSize }}</span>
                     </div>
+                    @if (n.maxCapacityBytes) {
+                      <div class="storage-row">
+                        <span class="storage-label">Max Limit</span>
+                        <span class="storage-val">{{ n.maxCapacityBytes | fileSize }}</span>
+                      </div>
+                    }
                   </div>
                 </div>
 
@@ -373,6 +379,9 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
               <input type="checkbox" [(ngModel)]="editNodeIsBehindNat" />
               <span>Behind NAT / Firewall (stream traffic through Master fallback)</span>
             </label>
+
+            <label>Max Capacity Limit (Bytes)</label>
+            <input type="number" [(ngModel)]="editNodeMaxCapacityBytes" placeholder="e.g. 1099511627776 for 1 TB" />
 
             <label>Status Override</label>
             <select [(ngModel)]="editNodeStatus" class="modal-select">
@@ -957,6 +966,7 @@ export class StorageNodesComponent implements OnInit, OnDestroy {
   editNodeBaseUrl = '';
   editNodeIsBehindNat = false;
   editNodeStatus = 'Online';
+  editNodeMaxCapacityBytes: number | undefined = undefined;
 
   private sub: Subscription | null = null;
 
@@ -1085,6 +1095,7 @@ export class StorageNodesComponent implements OnInit, OnDestroy {
     this.editNodeBaseUrl = node.baseUrl || '';
     this.editNodeIsBehindNat = node.isBehindNat;
     this.editNodeStatus = node.status;
+    this.editNodeMaxCapacityBytes = node.maxCapacityBytes;
     this.editNodeModalOpen.set(true);
   }
 
@@ -1097,7 +1108,8 @@ export class StorageNodesComponent implements OnInit, OnDestroy {
       name: this.editNodeName.trim(),
       baseUrl: this.editNodeBaseUrl.trim() || undefined,
       isBehindNat: this.editNodeIsBehindNat,
-      status: this.editNodeStatus
+      status: this.editNodeStatus,
+      maxCapacityBytes: this.editNodeMaxCapacityBytes !== undefined ? this.editNodeMaxCapacityBytes : undefined
     };
 
     this.apiService.updateAdminNode(node.id, req).subscribe({

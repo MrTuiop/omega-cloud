@@ -20,6 +20,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 // Realtime & SignalR
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<IHubConnectionTracker, HubConnectionTracker>();
 builder.Services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
 
 // CORS configuration for Angular client & WebSockets
@@ -96,6 +97,7 @@ app.UseSwaggerUI(c =>
 app.UseCors("CorsPolicy");
 
 app.UseAuthentication();
+app.UseMiddleware<UserActivityMiddleware>();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new

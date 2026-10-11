@@ -54,8 +54,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 BaseUrl = null,
                 IsBehindNat = false,
                 Status = StorageNodeStatus.Online,
-                TotalSpaceBytes = 1_099_511_627_776L,
-                AvailableSpaceBytes = 1_099_511_627_776L,
+                TotalSpaceBytes = 10_995_116_277_760L,
+                AvailableSpaceBytes = 10_995_116_277_760L,
+                MaxCapacityBytes = 10_995_116_277_760L,
                 LastHeartbeatAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
             };

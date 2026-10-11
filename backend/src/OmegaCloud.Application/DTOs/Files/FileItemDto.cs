@@ -10,6 +10,7 @@ public class FileItemDto
     public string Extension { get; set; } = string.Empty;
     public string MimeType { get; set; } = string.Empty;
     public long SizeBytes { get; set; }
+    public bool IsShared { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
     public bool IsFavorite { get; set; }

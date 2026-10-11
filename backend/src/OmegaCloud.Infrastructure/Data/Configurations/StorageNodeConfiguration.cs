@@ -50,6 +50,10 @@ public class StorageNodeConfiguration : IEntityTypeConfiguration<StorageNode>
         builder.Property(n => n.AvailableSpaceBytes)
             .IsRequired();
 
+        builder.Property(n => n.MaxCapacityBytes)
+            .HasDefaultValue(0L)
+            .IsRequired();
+
         builder.Property(n => n.CpuLoad);
 
         builder.Property(n => n.DiskStatus)

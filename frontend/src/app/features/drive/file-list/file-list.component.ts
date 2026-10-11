@@ -13,7 +13,11 @@ type SortDirection = 'asc' | 'desc';
   standalone: true,
   imports: [CommonModule, FileSizePipe, RelativeTimePipe],
   template: `
-    <div class="list-container">
+    <div
+      class="list-container"
+      (contextmenu)="onContainerContextMenu($event)"
+      (click)="onContainerClick($event)"
+    >
       <div class="table-wrapper">
         <table class="glass-table">
           <thead>
@@ -52,14 +56,19 @@ type SortDirection = 'asc' | 'desc';
             @for (folder of sortedFolders; track folder.id) {
               <tr
                 class="table-row folder-row"
-                [class.table-row--selected]="selectedFolderId === folder.id"
+                [attr.data-id]="folder.id"
+                [attr.data-type]="'folder'"
+                [class.table-row--selected]="isFolderSelected(folder.id)"
                 [class.table-row--dragover]="dragOverFolderId === folder.id"
-                (click)="selectFolder.emit(folder)"
+                [draggable]="!isTouchDevice"
+                (click)="onFolderClick($event, folder)"
                 (dblclick)="openFolder.emit(folder)"
                 (contextmenu)="onFolderContextMenu($event, folder)"
+                (dragstart)="onFolderDragStart($event, folder)"
                 (dragover)="onFolderDragOver($event, folder)"
                 (dragleave)="onFolderDragLeave(folder)"
                 (drop)="onFolderDrop($event, folder)"
+                (touchstart)="onTouchStart()"
               >
                 <td class="col-name">
                   <div class="row-title">
@@ -87,12 +96,15 @@ type SortDirection = 'asc' | 'desc';
             @for (file of sortedFiles; track file.id) {
               <tr
                 class="table-row file-row"
-                [class.table-row--selected]="selectedFileId === file.id"
-                (click)="selectFile.emit(file)"
-                (dblclick)="downloadFile.emit(file)"
+                [attr.data-id]="file.id"
+                [attr.data-type]="'file'"
+                [class.table-row--selected]="isFileSelected(file.id)"
+                [draggable]="!isTouchDevice"
+                (click)="onFileClick($event, file)"
+                (dblclick)="onFileDoubleClick(file)"
                 (contextmenu)="onFileContextMenu($event, file)"
-                draggable="true"
                 (dragstart)="onFileDragStart($event, file)"
+                (touchstart)="onTouchStart()"
               >
                 <td class="col-name">
                   <div class="row-title">
@@ -126,12 +138,16 @@ type SortDirection = 'asc' | 'desc';
                 </td>
               </tr>
             }
+
+            @if (folders.length === 0 && files.length === 0) {
+              <tr>
+                <td colspan="6" class="empty-cell">
+                  This folder is empty
+                </td>
+              </tr>
+            }
           </tbody>
         </table>
-
-        @if (folders.length === 0 && files.length === 0) {
-          <div class="empty-list">No items in this folder</div>
-        }
       </div>
     </div>
   `,
@@ -139,13 +155,19 @@ type SortDirection = 'asc' | 'desc';
     @use 'styles/glass' as *;
 
     .list-container {
+      display: flex;
+      flex-direction: column;
       width: 100%;
+      user-select: none;
+      -webkit-user-select: none;
+      min-height: 100%;
     }
 
     .table-wrapper {
       @include glass-surface;
       border-radius: var(--omega-radius-lg);
       overflow: hidden;
+      width: 100%;
     }
 
     .glass-table {
@@ -154,45 +176,47 @@ type SortDirection = 'asc' | 'desc';
       text-align: left;
       font-size: 13px;
 
-      th {
-        padding: 12px 16px;
-        font-weight: 600;
-        font-size: 12px;
-        color: var(--omega-text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border-bottom: 1px solid var(--omega-glass-border);
+      thead {
         background: var(--omega-glass-bg-sunken);
-        user-select: none;
-      }
-
-      td {
-        padding: 11px 16px;
         border-bottom: 1px solid var(--omega-glass-border-subtle);
-        color: var(--omega-text-primary);
-        vertical-align: middle;
+
+        th {
+          padding: 10px 16px;
+          font-weight: 600;
+          color: var(--omega-text-muted);
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          user-select: none;
+          cursor: pointer;
+          white-space: nowrap;
+
+          &:hover {
+            color: var(--omega-text-primary);
+          }
+        }
       }
-    }
 
-    .th-content {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-
-      &:hover {
-        color: var(--omega-text-primary);
+      .th-content {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
-    }
 
-    .sort-arrow {
-      font-size: 10px;
-      color: var(--omega-accent);
+      .sort-arrow {
+        font-size: 9px;
+        color: var(--omega-accent);
+      }
     }
 
     .table-row {
+      border-bottom: 1px solid var(--omega-glass-border-subtle);
+      transition: background 0.15s ease, box-shadow 0.15s ease;
       cursor: pointer;
-      transition: background 0.15s;
+
+      &:last-child {
+        border-bottom: none;
+      }
 
       &:hover {
         background: var(--omega-glass-bg-hover);
@@ -200,11 +224,20 @@ type SortDirection = 'asc' | 'desc';
 
       &--selected {
         background: var(--omega-accent-subtle) !important;
+        td.col-name {
+          color: var(--omega-accent);
+        }
       }
 
       &--dragover {
         background: var(--omega-accent-subtle) !important;
-        outline: 2px dashed var(--omega-accent);
+        box-shadow: inset 0 0 0 2px var(--omega-accent), 0 0 16px rgba(0, 113, 227, 0.4) !important;
+      }
+
+      td {
+        padding: 10px 16px;
+        color: var(--omega-text-secondary);
+        white-space: nowrap;
       }
     }
 
@@ -212,54 +245,77 @@ type SortDirection = 'asc' | 'desc';
       display: flex;
       align-items: center;
       gap: 12px;
+      min-width: 0;
     }
 
-    .item-name {
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 320px;
+    .row-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
 
     .file-mini-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       padding: 2px 6px;
-      border-radius: 4px;
+      border-radius: var(--omega-radius-xs, 4px);
       color: #ffffff;
       font-size: 10px;
       font-weight: 700;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
       flex-shrink: 0;
     }
 
+    .item-name {
+      color: var(--omega-text-primary);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .kind-tag {
       font-size: 11px;
-      color: var(--omega-text-secondary);
+      color: var(--omega-text-muted);
+    }
+
+    .col-star {
+      width: 36px;
+      padding-right: 0 !important;
+    }
+
+    .col-actions {
+      width: 44px;
+      text-align: right;
     }
 
     .table-star-btn {
+      background: none;
+      border: none;
       color: var(--omega-text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 4px;
-      border-radius: 4px;
-      transition: all 0.15s;
-
-      &--active {
-        color: #ffcc00;
-      }
+      transition: all 0.15s ease;
 
       &:hover {
+        color: #ffcc00;
+        transform: scale(1.15);
+      }
+
+      &--active {
         color: #ffcc00;
       }
     }
 
     .row-action-btn {
+      background: none;
+      border: none;
       color: var(--omega-text-muted);
+      cursor: pointer;
       padding: 4px 8px;
       border-radius: 4px;
       font-size: 12px;
@@ -271,15 +327,8 @@ type SortDirection = 'asc' | 'desc';
       }
     }
 
-    .col-name { width: 45%; }
-    .col-kind { width: 12%; }
-    .col-size { width: 12%; }
-    .col-date { width: 18%; }
-    .col-star { width: 5%; text-align: center; }
-    .col-actions { width: 8%; text-align: right; }
-
-    .empty-list {
-      padding: 48px;
+    .empty-cell {
+      padding: 40px !important;
       text-align: center;
       color: var(--omega-text-muted);
       font-size: 14px;
@@ -291,20 +340,41 @@ export class FileListComponent {
   @Input() files: FileItem[] = [];
   @Input() selectedFolderId: string | null = null;
   @Input() selectedFileId: string | null = null;
+  @Input() selectedFolderIds: string[] = [];
+  @Input() selectedFileIds: string[] = [];
 
   @Output() selectFolder = new EventEmitter<FolderItem>();
   @Output() openFolder = new EventEmitter<FolderItem>();
   @Output() folderContextMenu = new EventEmitter<{ event: MouseEvent; folder: FolderItem }>();
-  @Output() folderDrop = new EventEmitter<{ targetFolder: FolderItem; fileId: string }>();
+  @Output() folderDrop = new EventEmitter<{ targetFolder: FolderItem; fileId?: string; fileIds?: string[]; folderIds?: string[] }>();
 
   @Output() selectFile = new EventEmitter<FileItem>();
+  @Output() openFile = new EventEmitter<FileItem>();
   @Output() downloadFile = new EventEmitter<FileItem>();
   @Output() toggleFavorite = new EventEmitter<FileItem>();
   @Output() fileContextMenu = new EventEmitter<{ event: MouseEvent; file: FileItem }>();
+  @Output() selectionChange = new EventEmitter<{ folderIds: string[]; fileIds: string[] }>();
+  @Output() workspaceContextMenu = new EventEmitter<MouseEvent>();
+  @Output() emptySpaceClick = new EventEmitter<MouseEvent>();
 
   sortCol = signal<SortColumn>('name');
   sortDir = signal<SortDirection>('asc');
   dragOverFolderId: string | null = null;
+  isTouchDevice = false;
+
+  private lastPivot: { type: 'folder' | 'file'; id: string } | null = null;
+
+  isFolderSelected(id: string): boolean {
+    return this.selectedFolderIds.includes(id) || this.selectedFolderId === id;
+  }
+
+  isFileSelected(id: string): boolean {
+    return this.selectedFileIds.includes(id) || this.selectedFileId === id;
+  }
+
+  onTouchStart(): void {
+    this.isTouchDevice = true;
+  }
 
   get sortedFolders(): FolderItem[] {
     const list = [...this.folders];
@@ -344,6 +414,104 @@ export class FileListComponent {
     return getFileTypeInfo(file.extension, file.mimeType).color;
   }
 
+  onFolderClick(event: MouseEvent, folder: FolderItem): void {
+    event.stopPropagation();
+    this.handleItemSelection(event, 'folder', folder.id);
+    this.selectFolder.emit(folder);
+  }
+
+  onFileClick(event: MouseEvent, file: FileItem): void {
+    event.stopPropagation();
+    this.handleItemSelection(event, 'file', file.id);
+    this.selectFile.emit(file);
+  }
+
+  onFileDoubleClick(file: FileItem): void {
+    this.openFile.emit(file);
+  }
+
+  private handleItemSelection(event: MouseEvent, type: 'folder' | 'file', id: string): void {
+    const isCtrl = event.ctrlKey || event.metaKey;
+    const isShift = event.shiftKey;
+
+    let nextFolderIds = [...this.selectedFolderIds];
+    let nextFileIds = [...this.selectedFileIds];
+
+    if (isCtrl) {
+      if (type === 'folder') {
+        nextFolderIds = nextFolderIds.includes(id)
+          ? nextFolderIds.filter(fId => fId !== id)
+          : [...nextFolderIds, id];
+      } else {
+        nextFileIds = nextFileIds.includes(id)
+          ? nextFileIds.filter(fId => fId !== id)
+          : [...nextFileIds, id];
+      }
+      this.lastPivot = { type, id };
+    } else if (isShift && this.lastPivot) {
+      const allItems = this.getAllOrderedItems();
+      const pivotIdx = allItems.findIndex(i => i.type === this.lastPivot!.type && i.id === this.lastPivot!.id);
+      const currentIdx = allItems.findIndex(i => i.type === type && i.id === id);
+
+      if (pivotIdx !== -1 && currentIdx !== -1) {
+        const start = Math.min(pivotIdx, currentIdx);
+        const end = Math.max(pivotIdx, currentIdx);
+        const range = allItems.slice(start, end + 1);
+
+        nextFolderIds = range.filter(i => i.type === 'folder').map(i => i.id);
+        nextFileIds = range.filter(i => i.type === 'file').map(i => i.id);
+      } else {
+        nextFolderIds = type === 'folder' ? [id] : [];
+        nextFileIds = type === 'file' ? [id] : [];
+        this.lastPivot = { type, id };
+      }
+    } else {
+      nextFolderIds = type === 'folder' ? [id] : [];
+      nextFileIds = type === 'file' ? [id] : [];
+      this.lastPivot = { type, id };
+    }
+
+    this.selectedFolderIds = nextFolderIds;
+    this.selectedFileIds = nextFileIds;
+    this.selectedFolderId = nextFolderIds.length === 1 && nextFileIds.length === 0 ? nextFolderIds[0] : null;
+    this.selectedFileId = nextFileIds.length === 1 && nextFolderIds.length === 0 ? nextFileIds[0] : null;
+
+    this.selectionChange.emit({
+      folderIds: nextFolderIds,
+      fileIds: nextFileIds
+    });
+  }
+
+  private getAllOrderedItems(): { type: 'folder' | 'file'; id: string }[] {
+    return [
+      ...this.sortedFolders.map(f => ({ type: 'folder' as const, id: f.id })),
+      ...this.sortedFiles.map(f => ({ type: 'file' as const, id: f.id }))
+    ];
+  }
+
+  onContainerClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (target.closest('.table-row, button, input')) {
+      return;
+    }
+    this.selectedFolderIds = [];
+    this.selectedFileIds = [];
+    this.selectedFolderId = null;
+    this.selectedFileId = null;
+    this.selectionChange.emit({ folderIds: [], fileIds: [] });
+    this.emptySpaceClick.emit(event);
+  }
+
+  onContainerContextMenu(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (target.closest('.table-row, button, input')) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.workspaceContextMenu.emit(event);
+  }
+
   onToggleFavorite(event: MouseEvent, file: FileItem): void {
     event.stopPropagation();
     this.toggleFavorite.emit(file);
@@ -352,23 +520,64 @@ export class FileListComponent {
   onFolderContextMenu(event: MouseEvent, folder: FolderItem): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.isFolderSelected(folder.id)) {
+      this.selectedFolderIds = [folder.id];
+      this.selectedFileIds = [];
+      this.selectionChange.emit({ folderIds: [folder.id], fileIds: [] });
+    }
     this.folderContextMenu.emit({ event, folder });
   }
 
   onFileContextMenu(event: MouseEvent, file: FileItem): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.isFileSelected(file.id)) {
+      this.selectedFolderIds = [];
+      this.selectedFileIds = [file.id];
+      this.selectionChange.emit({ folderIds: [], fileIds: [file.id] });
+    }
     this.fileContextMenu.emit({ event, file });
   }
 
-  onFileDragStart(event: DragEvent, file: FileItem): void {
+  onFolderDragStart(event: DragEvent, folder: FolderItem): void {
+    if (!this.isFolderSelected(folder.id)) {
+      this.selectedFolderIds = [folder.id];
+      this.selectedFileIds = [];
+      this.selectionChange.emit({ folderIds: [folder.id], fileIds: [] });
+    }
     if (event.dataTransfer) {
-      event.dataTransfer.setData('application/json', JSON.stringify({ fileId: file.id }));
+      event.dataTransfer.setData('application/json', JSON.stringify({
+        folderIds: this.selectedFolderIds,
+        fileIds: this.selectedFileIds,
+        fileId: null
+      }));
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onFileDragStart(event: DragEvent, file: FileItem): void {
+    if (!this.isFileSelected(file.id)) {
+      this.selectedFileIds = [file.id];
+      this.selectedFolderIds = [];
+      this.selectionChange.emit({ folderIds: [], fileIds: [file.id] });
+    }
+    if (event.dataTransfer) {
+      event.dataTransfer.setData('application/json', JSON.stringify({
+        folderIds: this.selectedFolderIds,
+        fileIds: this.selectedFileIds,
+        fileId: file.id
+      }));
       event.dataTransfer.effectAllowed = 'move';
     }
   }
 
   onFolderDragOver(event: DragEvent, folder: FolderItem): void {
+    if (this.selectedFolderIds.includes(folder.id)) {
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'none';
+      }
+      return;
+    }
     event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
@@ -385,14 +594,23 @@ export class FileListComponent {
   onFolderDrop(event: DragEvent, targetFolder: FolderItem): void {
     event.preventDefault();
     this.dragOverFolderId = null;
+    if (this.selectedFolderIds.includes(targetFolder.id)) {
+      return;
+    }
     if (event.dataTransfer) {
       const dataStr = event.dataTransfer.getData('application/json');
       if (dataStr) {
         try {
           const data = JSON.parse(dataStr);
-          if (data.fileId) {
-            this.folderDrop.emit({ targetFolder, fileId: data.fileId });
+          if (data.folderIds && data.folderIds.includes(targetFolder.id)) {
+            return;
           }
+          this.folderDrop.emit({
+            targetFolder,
+            fileId: data.fileId || (data.fileIds && data.fileIds.length > 0 ? data.fileIds[0] : undefined),
+            fileIds: data.fileIds || (data.fileId ? [data.fileId] : []),
+            folderIds: data.folderIds || []
+          });
         } catch {
           // Ignore
         }

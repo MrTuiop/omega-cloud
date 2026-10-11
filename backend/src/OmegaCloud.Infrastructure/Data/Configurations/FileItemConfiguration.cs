@@ -35,6 +35,10 @@ public class FileItemConfiguration : IEntityTypeConfiguration<FileItem>
         builder.Property(fi => fi.SizeBytes)
             .IsRequired();
 
+        builder.Property(fi => fi.IsShared)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(fi => fi.IsDeleted)
             .HasDefaultValue(false)
             .IsRequired();
@@ -55,6 +59,8 @@ public class FileItemConfiguration : IEntityTypeConfiguration<FileItem>
         builder.HasIndex(fi => fi.FolderId);
         builder.HasIndex(fi => fi.StorageBlobId);
         builder.HasIndex(fi => fi.IsDeleted);
+        builder.HasIndex(fi => fi.IsShared);
+        builder.HasIndex(fi => new { fi.IsShared, fi.FolderId, fi.IsDeleted });
         builder.HasIndex(fi => new { fi.UserId, fi.FolderId, fi.Name, fi.IsDeleted });
 
         builder.HasOne(fi => fi.User)

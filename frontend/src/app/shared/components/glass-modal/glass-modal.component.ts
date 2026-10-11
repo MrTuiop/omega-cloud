@@ -7,8 +7,16 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule],
   template: `
     @if (isOpen) {
-      <div class="modal-backdrop" (click)="onBackdropClick($event)">
-        <div class="modal-dialog" [style.max-width]="maxWidth" (click)="$event.stopPropagation()">
+      <div
+        class="modal-backdrop"
+        (mousedown)="onBackdropMouseDown($event)"
+        (mouseup)="onBackdropMouseUp($event)"
+      >
+        <div
+          class="modal-dialog"
+          [style.max-width]="maxWidth"
+          (click)="$event.stopPropagation()"
+        >
           <div class="modal-header">
             <h3 class="modal-title">{{ title }}</h3>
             <button class="modal-close" (click)="close.emit()" title="Close">
@@ -127,9 +135,21 @@ export class GlassModalComponent {
     }
   }
 
-  onBackdropClick(event: MouseEvent): void {
-    if (this.closeOnBackdrop && event.target === event.currentTarget) {
+  private isMouseDownOnBackdrop = false;
+
+  @HostListener('window:mouseup')
+  onWindowMouseUp(): void {
+    this.isMouseDownOnBackdrop = false;
+  }
+
+  onBackdropMouseDown(event: MouseEvent): void {
+    this.isMouseDownOnBackdrop = event.target === event.currentTarget;
+  }
+
+  onBackdropMouseUp(event: MouseEvent): void {
+    if (this.closeOnBackdrop && this.isMouseDownOnBackdrop && event.target === event.currentTarget) {
       this.close.emit();
     }
+    this.isMouseDownOnBackdrop = false;
   }
 }

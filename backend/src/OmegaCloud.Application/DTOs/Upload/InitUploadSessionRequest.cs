@@ -12,4 +12,6 @@ public class InitUploadSessionRequest
     public Guid? FolderId { get; set; }
     public Guid? TargetFolderId { get; set; } // Sequence diagram alias
     public Guid? StorageNodeId { get; set; }
+    public OmegaCloud.Domain.Enums.ConflictResolutionStrategy? ConflictResolution { get; set; }
+    public bool? IsShared { get; set; }
 }

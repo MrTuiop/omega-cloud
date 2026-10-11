@@ -1,13 +1,14 @@
-import { Component, OnInit, OnDestroy, inject, signal, computed, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterModule } from '@angular/router';
+import { Router, ActivatedRoute, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { ThemeService } from '../../../core/services/theme.service';
 import { SignalRService } from '../../../core/services/signalr.service';
 import { ResumableUploaderService } from '../../../core/services/resumable-uploader.service';
+import { ToastService } from '../../../core/services/toast.service';
 import {
   Breadcrumb,
   FileItem,
@@ -24,6 +25,9 @@ import { FileDetailsSheetComponent } from '../file-details-sheet/file-details-sh
 import { UploadTrayComponent } from '../upload-tray/upload-tray.component';
 import { TrashBinComponent } from '../trash-bin/trash-bin.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { I18nService } from '../../../core/services/i18n.service';
+import { UploadQueueModalComponent } from '../upload-queue-modal/upload-queue-modal.component';
 
 type DriveViewTab = 'files' | 'favorites' | 'trash';
 type DisplayMode = 'grid' | 'list';
@@ -44,6 +48,8 @@ type DisplayMode = 'grid' | 'list';
     UploadTrayComponent,
     TrashBinComponent,
     FileSizePipe,
+    TranslatePipe,
+    UploadQueueModalComponent,
     RouterModule
   ],
   template: `
@@ -69,8 +75,13 @@ type DisplayMode = 'grid' | 'list';
         </div>
       }
 
+      <!-- Mobile Backdrop -->
+      @if (isMobileMenuOpen()) {
+        <div class="mobile-drawer-backdrop" (click)="isMobileMenuOpen.set(false)"></div>
+      }
+
       <!-- Left Sidebar -->
-      <aside class="sidebar">
+      <aside class="sidebar" [class.sidebar--open]="isMobileMenuOpen()">
         <!-- Logo -->
         <div class="sidebar-brand">
           <div class="brand-icon">
@@ -79,10 +90,25 @@ type DisplayMode = 'grid' | 'list';
             </svg>
           </div>
           <span class="brand-text">Omega Cloud</span>
+          <button class="mobile-close-btn" (click)="isMobileMenuOpen.set(false)">✕</button>
         </div>
 
         <!-- Navigation Menu -->
         <nav class="sidebar-nav">
+          <a
+            routerLink="/dashboard"
+            class="nav-item"
+            [title]="'nav.dashboard' | translate"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span>{{ 'nav.dashboard' | translate }}</span>
+          </a>
+
           <button
             class="nav-item"
             [class.nav-item--active]="currentTab() === 'files'"
@@ -91,8 +117,23 @@ type DisplayMode = 'grid' | 'list';
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            <span>My Drive</span>
+            <span>{{ 'nav.drive' | translate }}</span>
           </button>
+
+          <a
+            routerLink="/shared"
+            class="nav-item"
+            [title]="'nav.shared' | translate"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span>{{ 'nav.shared' | translate }}</span>
+          </a>
 
           <button
             class="nav-item"
@@ -102,7 +143,7 @@ type DisplayMode = 'grid' | 'list';
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
             </svg>
-            <span>Favorites</span>
+            <span>{{ 'nav.favorites' | translate }}</span>
           </button>
 
           <button
@@ -114,19 +155,19 @@ type DisplayMode = 'grid' | 'list';
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             </svg>
-            <span>Trash</span>
+            <span>{{ 'nav.trash' | translate }}</span>
           </button>
 
           @if (authStore.isAdmin()) {
             <a
               routerLink="/admin"
               class="nav-item nav-item--admin"
-              title="Admin Console"
+              [title]="'nav.admin' | translate"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               </svg>
-              <span>Admin Console</span>
+              <span>{{ 'nav.admin' | translate }}</span>
             </a>
           }
         </nav>
@@ -196,20 +237,28 @@ type DisplayMode = 'grid' | 'list';
         <!-- Top Navigation & Action Header -->
         <header class="stage-header">
           <div class="header-left">
+            <button class="hamburger-btn" (click)="isMobileMenuOpen.set(true)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+
             @if (currentTab() === 'files') {
               <app-breadcrumbs
                 [breadcrumbs]="folderContent()?.breadcrumbs || []"
                 (navigate)="onNavigateFolder($event)"
               ></app-breadcrumbs>
             } @else if (currentTab() === 'favorites') {
-              <h2 class="view-title">Starred Items</h2>
+              <h2 class="view-title">{{ 'nav.favorites' | translate }}</h2>
             } @else {
-              <h2 class="view-title">Trash</h2>
+              <h2 class="view-title">{{ 'nav.trash' | translate }}</h2>
             }
           </div>
 
           <div class="header-right">
-            <!-- Search bar -->
+            <!-- Search bar with Scope dropdown -->
             <div class="search-box">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"></circle>
@@ -217,12 +266,16 @@ type DisplayMode = 'grid' | 'list';
               </svg>
               <input
                 type="text"
-                placeholder="Search..."
+                [placeholder]="'search.placeholder' | translate"
                 [ngModel]="searchQuery()"
-                (ngModelChange)="searchQuery.set($event)"
+                (ngModelChange)="onSearchQueryChange($event)"
               />
+              <select class="scope-select" [ngModel]="searchScope()" (ngModelChange)="onSearchScopeChange($event)">
+                <option value="everywhere">{{ 'search.scopeEverywhere' | translate }}</option>
+                <option value="current">{{ 'search.scopeCurrentFolder' | translate }}</option>
+              </select>
               @if (searchQuery()) {
-                <button class="clear-search" (click)="searchQuery.set('')">✕</button>
+                <button class="clear-search" (click)="clearSearch()">✕</button>
               }
             </div>
 
@@ -259,6 +312,15 @@ type DisplayMode = 'grid' | 'list';
                 </button>
               </div>
 
+              <!-- Language Selector -->
+              <div class="lang-selector">
+                <select [ngModel]="i18n.currentLang()" (ngModelChange)="i18n.setLanguage($event)">
+                  @for (lang of i18n.supportedLanguages; track lang.code) {
+                    <option [value]="lang.code">{{ lang.shortLabel }}</option>
+                  }
+                </select>
+              </div>
+
               <!-- New Folder & Upload Buttons -->
               <app-glass-button variant="secondary" size="md" (btnClick)="openCreateFolderModal()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -266,7 +328,7 @@ type DisplayMode = 'grid' | 'list';
                   <line x1="12" y1="11" x2="12" y2="17"></line>
                   <line x1="9" y1="14" x2="15" y2="14"></line>
                 </svg>
-                New Folder
+                {{ 'dashboard.createFolder' | translate }}
               </app-glass-button>
 
               <app-glass-button variant="primary" size="md" (btnClick)="fileInput.click()">
@@ -275,7 +337,7 @@ type DisplayMode = 'grid' | 'list';
                   <polyline points="17 8 12 3 7 8"></polyline>
                   <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                Upload
+                {{ 'dashboard.uploadFiles' | translate }}
               </app-glass-button>
 
               <input
@@ -302,30 +364,42 @@ type DisplayMode = 'grid' | 'list';
                   [folders]="filteredFolders()"
                   [files]="filteredFiles()"
                   [selectedFolderId]="selectedFolderId()"
-                  [selectedFileId]="selectedFile()?.id || null"
+                  [selectedFileId]="selectedFileId()"
+                  [selectedFolderIds]="selectedFolderIds()"
+                  [selectedFileIds]="selectedFileIds()"
                   (selectFolder)="onSelectFolder($event)"
                   (openFolder)="onOpenFolder($event)"
                   (selectFile)="onSelectFile($event)"
+                  (openFile)="onOpenFile($event)"
                   (downloadFile)="onDownloadFile($event)"
                   (toggleFavorite)="onToggleFavorite($event)"
                   (folderContextMenu)="onFolderContextMenu($event)"
                   (fileContextMenu)="onFileContextMenu($event)"
                   (folderDrop)="onFolderDrop($event)"
+                  (selectionChange)="onSelectionChange($event)"
+                  (workspaceContextMenu)="onWorkspaceContextMenu($event)"
+                  (emptySpaceClick)="clearSelection()"
                 ></app-file-grid>
               } @else {
                 <app-file-list
                   [folders]="filteredFolders()"
                   [files]="filteredFiles()"
                   [selectedFolderId]="selectedFolderId()"
-                  [selectedFileId]="selectedFile()?.id || null"
+                  [selectedFileId]="selectedFileId()"
+                  [selectedFolderIds]="selectedFolderIds()"
+                  [selectedFileIds]="selectedFileIds()"
                   (selectFolder)="onSelectFolder($event)"
                   (openFolder)="onOpenFolder($event)"
                   (selectFile)="onSelectFile($event)"
+                  (openFile)="onOpenFile($event)"
                   (downloadFile)="onDownloadFile($event)"
                   (toggleFavorite)="onToggleFavorite($event)"
                   (folderContextMenu)="onFolderContextMenu($event)"
                   (fileContextMenu)="onFileContextMenu($event)"
                   (folderDrop)="onFolderDrop($event)"
+                  (selectionChange)="onSelectionChange($event)"
+                  (workspaceContextMenu)="onWorkspaceContextMenu($event)"
+                  (emptySpaceClick)="clearSelection()"
                 ></app-file-list>
               }
             }
@@ -334,10 +408,10 @@ type DisplayMode = 'grid' | 'list';
       </main>
 
       <!-- Right Inspector Sheet -->
-      @if (selectedFile()) {
+      @if (inspectorFile()) {
         <app-file-details-sheet
-          [file]="selectedFile()"
-          (close)="selectedFile.set(null)"
+          [file]="inspectorFile()"
+          (close)="inspectorFile.set(null)"
           (download)="onDownloadFile($event)"
           (rename)="openRenameModal($event)"
           (toggleFavorite)="onToggleFavorite($event)"
@@ -428,11 +502,164 @@ type DisplayMode = 'grid' | 'list';
           <app-glass-button variant="danger" (btnClick)="applyDelete()">Move to Trash</app-glass-button>
         </div>
       </app-glass-modal>
+
+      <!-- Bulk Action Bar -->
+      @if (selectedCount() > 0) {
+        <div class="bulk-action-bar anim-slide-in-up">
+          <div class="bulk-count">
+            <span class="count-badge">{{ selectedCount() }}</span>
+            <span>selected</span>
+          </div>
+
+          <div class="bulk-divider"></div>
+
+          <div class="bulk-buttons">
+            <button class="bulk-btn" (click)="downloadSelectedZip()" title="Download as ZIP">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Download ZIP</span>
+            </button>
+
+            <button class="bulk-btn" (click)="openBulkMoveModal()" title="Move selected items">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14"></path>
+                <path d="M12 5l7 7-7 7"></path>
+              </svg>
+              <span>Move</span>
+            </button>
+
+            <button class="bulk-btn bulk-btn--danger" (click)="openBulkDeleteModal()" title="Move selected items to Trash">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Delete</span>
+            </button>
+          </div>
+
+          <div class="bulk-divider"></div>
+
+          <button class="bulk-close-btn" (click)="clearSelection()" title="Clear selection">✕</button>
+        </div>
+      }
+
+      <!-- Bulk Delete Modal -->
+      <app-glass-modal
+        [isOpen]="bulkDeleteModalOpen()"
+        title="Move to Trash"
+        (close)="bulkDeleteModalOpen.set(false)"
+      >
+        <p>Are you sure you want to move <strong>{{ selectedCount() }}</strong> selected item(s) to Trash?</p>
+        <div footer>
+          <app-glass-button variant="secondary" (btnClick)="bulkDeleteModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="danger" (btnClick)="applyBulkDelete()">Move to Trash</app-glass-button>
+        </div>
+      </app-glass-modal>
+
+      <!-- Bulk Move Modal -->
+      <app-glass-modal
+        [isOpen]="bulkMoveModalOpen()"
+        title="Move Items"
+        (close)="bulkMoveModalOpen.set(false)"
+      >
+        <p class="modal-sub">Choose destination folder for <strong>{{ selectedCount() }}</strong> item(s):</p>
+        <div class="move-folder-list">
+          <button
+            class="folder-select-item"
+            [class.folder-select-item--active]="bulkMoveTargetFolderId === null"
+            (click)="bulkMoveTargetFolderId = null"
+          >
+            <span class="folder-select-icon">📁</span>
+            <span>Root Drive</span>
+          </button>
+          @for (folder of availableMoveFolders(); track folder.id) {
+            <button
+              class="folder-select-item"
+              [class.folder-select-item--active]="bulkMoveTargetFolderId === folder.id"
+              (click)="bulkMoveTargetFolderId = folder.id"
+            >
+              <span class="folder-select-icon" [style.color]="folder.color || 'var(--omega-accent)'">📁</span>
+              <span>{{ folder.name }}</span>
+            </button>
+          }
+        </div>
+        <div footer>
+          <app-glass-button variant="secondary" (btnClick)="bulkMoveModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="primary" (btnClick)="applyBulkMove()">Move here</app-glass-button>
+        </div>
+      </app-glass-modal>
+
+      <!-- Folder Properties Modal -->
+      <app-glass-modal
+        [isOpen]="folderPropertiesModalOpen()"
+        [title]="'Properties: ' + currentFolderName()"
+        (close)="folderPropertiesModalOpen.set(false)"
+      >
+        <div class="properties-list">
+          <div class="prop-row">
+            <span class="prop-label">Name</span>
+            <span class="prop-value">{{ currentFolderName() }}</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Folders</span>
+            <span class="prop-value">{{ filteredFolders().length }}</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Files</span>
+            <span class="prop-value">{{ filteredFiles().length }}</span>
+          </div>
+          <div class="prop-row">
+            <span class="prop-label">Total Size</span>
+            <span class="prop-value">{{ currentFolderTotalSizeBytes() | fileSize }}</span>
+          </div>
+        </div>
+        <div footer>
+          <app-glass-button variant="secondary" (btnClick)="folderPropertiesModalOpen.set(false)">Close</app-glass-button>
+        </div>
+      </app-glass-modal>
+
+      <!-- Upload Queue Modal -->
+      <app-upload-queue-modal
+        [isOpen]="isUploadQueueOpen()"
+        [inputFiles]="queuedFiles()"
+        [destinationName]="currentFolderName()"
+        [destinationFolderId]="currentFolderId()"
+        [isShared]="false"
+        (close)="isUploadQueueOpen.set(false)"
+        (startUpload)="onStartUploadFromQueue($event)"
+      ></app-upload-queue-modal>
+
+      <!-- Mobile Action Sheet -->
+      <div class="mobile-action-sheet" [class.mobile-action-sheet--visible]="selectedCount() > 0">
+        <div class="action-sheet-header">
+          <span class="sheet-count">{{ selectedCount() }} {{ 'files.selectedCount' | translate }}</span>
+          <button class="sheet-close-btn" (click)="clearSelection()">✕</button>
+        </div>
+        <div class="sheet-actions">
+          <button class="sheet-btn" (click)="downloadSelectedZip()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>{{ 'files.downloadSelected' | translate }}</span>
+          </button>
+          <button class="sheet-btn sheet-btn--danger" (click)="openBulkDeleteModal()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>{{ 'files.deleteSelected' | translate }}</span>
+          </button>
+        </div>
+      </div>
     </div>
   `,
   styles: [`
     @use 'styles/glass' as *;
-    @use 'styles/animations' as *;
 
     .app-shell {
       position: relative;
@@ -449,9 +676,7 @@ type DisplayMode = 'grid' | 'list';
       width: 250px;
       height: 100%;
       @include glass-surface;
-      border-left: none;
-      border-top: none;
-      border-bottom: none;
+      border-width: 0 1px 0 0;
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
@@ -828,15 +1053,313 @@ type DisplayMode = 'grid' | 'list';
         transform: scale(1.15);
       }
     }
+
+    .bulk-action-bar {
+      @include glass-elevated;
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      border-radius: var(--omega-radius-full, 9999px);
+      box-shadow: var(--omega-shadow-xl), 0 0 24px rgba(0, 113, 227, 0.2);
+    }
+
+    .bulk-count {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--omega-text-primary);
+
+      .count-badge {
+        background: var(--omega-accent);
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 10px;
+      }
+    }
+
+    .bulk-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--omega-glass-border-subtle);
+    }
+
+    .bulk-buttons {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .bulk-btn {
+      background: var(--omega-glass-bg-sunken);
+      border: 1px solid var(--omega-glass-border-subtle);
+      border-radius: var(--omega-radius-sm);
+      padding: 6px 12px;
+      color: var(--omega-text-primary);
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: var(--omega-glass-bg-hover);
+        color: var(--omega-accent);
+        transform: translateY(-1px);
+      }
+
+      &--danger:hover {
+        color: var(--omega-danger) !important;
+      }
+    }
+
+    .bulk-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--omega-text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        color: var(--omega-text-primary);
+        background: var(--omega-glass-bg-hover);
+      }
+    }
+
+    .move-folder-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 240px;
+      overflow-y: auto;
+      margin: 12px 0;
+    }
+
+    .folder-select-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--omega-radius-sm);
+      background: var(--omega-glass-bg-sunken);
+      border: 1px solid transparent;
+      color: var(--omega-text-primary);
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+
+      &:hover { background: var(--omega-glass-bg-hover); }
+      &--active {
+        border-color: var(--omega-accent);
+        background: var(--omega-accent-subtle);
+        color: var(--omega-accent);
+      }
+    }
+
+    .properties-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 6px 0;
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--omega-glass-border-subtle);
+      font-size: 13px;
+      &:last-child { border-bottom: none; }
+    }
+
+    .prop-label { color: var(--omega-text-muted); }
+    .prop-value { font-weight: 500; color: var(--omega-text-primary); }
+
+    .scope-select {
+      background: none;
+      border: none;
+      border-left: 1px solid var(--omega-glass-border-subtle);
+      padding-left: 8px;
+      font-size: 11px;
+      color: var(--omega-text-secondary);
+      outline: none;
+      cursor: pointer;
+
+      option {
+        background: var(--omega-bg-canvas);
+        color: var(--omega-text-primary);
+      }
+    }
+
+    .lang-selector select {
+      background: var(--omega-glass-bg-subtle);
+      border: 1px solid var(--omega-glass-border-subtle);
+      color: var(--omega-text-primary);
+      padding: 6px 8px;
+      min-height: 44px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+
+      option {
+        background: var(--omega-bg-canvas);
+      }
+    }
+
+    .hamburger-btn, .mobile-close-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--omega-text-primary);
+      cursor: pointer;
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .mobile-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(8px);
+      z-index: 99;
+    }
+
+    .mobile-action-sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 105;
+      @include glass-elevated;
+      border-radius: 16px 16px 0 0;
+      padding: 16px 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transform: translateY(110%);
+      transition: transform 0.25s var(--omega-ease-smooth);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+
+      &--visible {
+        transform: translateY(0);
+      }
+
+      .action-sheet-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .sheet-count {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--omega-text-primary);
+        }
+
+        .sheet-close-btn {
+          background: none;
+          border: none;
+          color: var(--omega-text-muted);
+          font-size: 16px;
+          cursor: pointer;
+          min-width: 44px;
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+      }
+
+      .sheet-actions {
+        display: flex;
+        gap: 12px;
+      }
+
+      .sheet-btn {
+        flex: 1;
+        @include glass-surface;
+        min-height: 44px;
+        border-radius: var(--omega-radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--omega-text-primary);
+        cursor: pointer;
+        border: 1px solid var(--omega-glass-border-subtle);
+
+        &:hover {
+          background: var(--omega-glass-bg-hover);
+        }
+
+        &--danger {
+          color: var(--omega-danger);
+          border-color: rgba(255, 69, 58, 0.3);
+          background: var(--omega-danger-subtle);
+        }
+      }
+    }
+
+    /* Mobile media query */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        transform: translateX(-100%);
+        transition: transform 0.25s var(--omega-ease-smooth);
+        z-index: 100;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.4);
+
+        &--open {
+          transform: translateX(0);
+        }
+      }
+
+      .hamburger-btn, .mobile-close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .bulk-action-bar {
+        display: none; /* replaced by mobile action sheet */
+      }
+    }
   `]
 })
 export class DriveLayoutComponent implements OnInit, OnDestroy {
+  @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
+
   private readonly apiService = inject(ApiService);
   readonly authStore = inject(AuthStore);
   readonly themeService = inject(ThemeService);
   private readonly signalRService = inject(SignalRService);
   private readonly uploader = inject(ResumableUploaderService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  readonly toastService = inject(ToastService);
+  readonly i18n = inject(I18nService);
 
   currentTab = signal<DriveViewTab>('files');
   displayMode = signal<DisplayMode>('grid');
@@ -845,10 +1368,22 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   folderContent = signal<FolderContent | null>(null);
   loadingFolder = signal<boolean>(false);
 
+  // Multi-selection state
+  selectedFolderIds = signal<string[]>([]);
+  selectedFileIds = signal<string[]>([]);
   selectedFolderId = signal<string | null>(null);
+  selectedFileId = signal<string | null>(null);
   selectedFile = signal<FileItem | null>(null);
+  inspectorFile = signal<FileItem | null>(null);
+  readonly selectedCount = computed(() => this.selectedFolderIds().length + this.selectedFileIds().length);
 
   searchQuery = signal<string>('');
+  searchScope = signal<'everywhere' | 'current'>('everywhere');
+  readonly searchResults = signal<FolderContent | null>(null);
+  readonly isSearching = signal<boolean>(false);
+  isMobileMenuOpen = signal<boolean>(false);
+  isUploadQueueOpen = signal<boolean>(false);
+  queuedFiles = signal<File[]>([]);
 
   isDraggingOver = signal<boolean>(false);
   private dragCounter = 0;
@@ -860,6 +1395,7 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   contextMenuItems = signal<ContextMenuItem[]>([]);
   private contextTargetFolder: FolderItem | null = null;
   private contextTargetFile: FileItem | null = null;
+  private isWorkspaceContext = false;
 
   // Create Folder State
   createFolderModalOpen = signal<boolean>(false);
@@ -877,6 +1413,12 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   deleteItemTarget: { type: 'folder' | 'file'; id: string; name: string } | null = null;
   itemToDeleteName = computed(() => this.deleteItemTarget?.name || '');
 
+  // Bulk Operations State
+  bulkDeleteModalOpen = signal<boolean>(false);
+  bulkMoveModalOpen = signal<boolean>(false);
+  bulkMoveTargetFolderId: string | null = null;
+  folderPropertiesModalOpen = signal<boolean>(false);
+
   private subs: Subscription[] = [];
 
   readonly currentFolderName = computed(() => {
@@ -889,29 +1431,115 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     return user.username.slice(0, 2).toUpperCase();
   });
 
+  onSearchQueryChange(query: string): void {
+    this.searchQuery.set(query);
+    this.performSearch();
+  }
+
+  onSearchScopeChange(scope: 'everywhere' | 'current'): void {
+    this.searchScope.set(scope);
+    if (this.searchQuery().trim()) {
+      this.performSearch();
+    }
+  }
+
+  clearSearch(): void {
+    this.searchQuery.set('');
+    this.searchResults.set(null);
+  }
+
+  performSearch(): void {
+    const q = this.searchQuery().trim();
+    if (!q) {
+      this.searchResults.set(null);
+      return;
+    }
+
+    this.isSearching.set(true);
+    const folderId = this.searchScope() === 'current' ? this.currentFolderId() : null;
+    this.apiService.searchFiles(q, folderId, this.searchScope()).subscribe({
+      next: (res) => {
+        this.isSearching.set(false);
+        this.searchResults.set(res);
+      },
+      error: () => {
+        this.isSearching.set(false);
+        this.searchResults.set(null);
+      }
+    });
+  }
+
   readonly filteredFolders = computed(() => {
-    const content = this.folderContent();
-    if (!content) return [];
     if (this.currentTab() === 'favorites') return [];
     const q = this.searchQuery().trim().toLowerCase();
-    if (!q) return content.folders;
+    if (!q) {
+      return this.folderContent()?.folders || [];
+    }
+
+    const searchRes = this.searchResults();
+    if (searchRes) {
+      return searchRes.folders;
+    }
+
+    const content = this.folderContent();
+    if (!content) return [];
     return content.folders.filter(f => f.name.toLowerCase().includes(q));
   });
 
   readonly filteredFiles = computed(() => {
+    const q = this.searchQuery().trim().toLowerCase();
+    if (!q) {
+      const content = this.folderContent();
+      if (!content) return [];
+      let list = content.files;
+      if (this.currentTab() === 'favorites') {
+        list = list.filter(f => f.isFavorite);
+      }
+      return list;
+    }
+
+    const searchRes = this.searchResults();
+    if (searchRes) {
+      let list = searchRes.files;
+      if (this.currentTab() === 'favorites') {
+        list = list.filter(f => f.isFavorite);
+      }
+      return list;
+    }
+
     const content = this.folderContent();
     if (!content) return [];
     let list = content.files;
     if (this.currentTab() === 'favorites') {
       list = list.filter(f => f.isFavorite);
     }
-    const q = this.searchQuery().trim().toLowerCase();
-    if (!q) return list;
     return list.filter(f => f.name.toLowerCase().includes(q));
   });
 
+  readonly availableMoveFolders = computed(() => {
+    const content = this.folderContent();
+    if (!content) return [];
+    const excluded = new Set(this.selectedFolderIds());
+    return content.folders.filter(f => !excluded.has(f.id));
+  });
+
+  readonly currentFolderTotalSizeBytes = computed(() => {
+    const files = this.folderContent()?.files || [];
+    return files.reduce((acc, f) => acc + (f.sizeBytes || 0), 0);
+  });
+
   ngOnInit(): void {
-    this.loadCurrentFolder();
+    // Route query param subscription (History API integration)
+    this.subs.push(
+      this.route.queryParams.subscribe(params => {
+        const folderParam = params['folder'] || null;
+        if (folderParam !== this.currentFolderId()) {
+          this.switchFolder(folderParam);
+        } else if (!this.folderContent()) {
+          this.loadCurrentFolder();
+        }
+      })
+    );
 
     // Start SignalR & subscribe to current folder events
     this.signalRService.start().then(() => {
@@ -935,10 +1563,25 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     this.signalRService.stop();
   }
 
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.contextMenuOpen()) {
+      this.contextMenuOpen.set(false);
+    } else if (this.bulkMoveModalOpen()) {
+      this.bulkMoveModalOpen.set(false);
+    } else if (this.bulkDeleteModalOpen()) {
+      this.bulkDeleteModalOpen.set(false);
+    } else if (this.folderPropertiesModalOpen()) {
+      this.folderPropertiesModalOpen.set(false);
+    } else if (this.selectedCount() > 0) {
+      this.clearSelection();
+    }
+  }
+
   selectTab(tab: DriveViewTab): void {
     this.currentTab.set(tab);
-    this.selectedFile.set(null);
-    this.selectedFolderId.set(null);
+    this.clearSelection();
+    this.inspectorFile.set(null);
     if (tab === 'files') {
       this.loadCurrentFolder();
     }
@@ -967,19 +1610,37 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   }
 
   onNavigateFolder(folderId: string | null): void {
+    if (this.currentTab() !== 'files') {
+      this.currentTab.set('files');
+    }
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { folder: folderId || null },
+      queryParamsHandling: 'merge'
+    });
+  }
+
+  private switchFolder(folderId: string | null): void {
+    if (this.currentTab() !== 'files') {
+      this.currentTab.set('files');
+    }
     const prevFolderId = this.currentFolderId();
     if (prevFolderId !== folderId) {
       this.signalRService.unsubscribeFromFolder(prevFolderId);
       this.signalRService.subscribeToFolder(folderId);
+      this.clearSearch();
     }
     this.currentFolderId.set(folderId);
-    this.selectedFile.set(null);
-    this.selectedFolderId.set(null);
+    this.clearSelection();
+    this.inspectorFile.set(null);
     this.loadCurrentFolder();
   }
 
   onSelectFolder(folder: FolderItem): void {
     this.selectedFolderId.set(folder.id);
+    this.selectedFileId.set(null);
+    this.selectedFolderIds.set([folder.id]);
+    this.selectedFileIds.set([]);
     this.selectedFile.set(null);
   }
 
@@ -989,7 +1650,40 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
 
   onSelectFile(file: FileItem): void {
     this.selectedFile.set(file);
+    this.selectedFileId.set(file.id);
     this.selectedFolderId.set(null);
+    this.selectedFileIds.set([file.id]);
+    this.selectedFolderIds.set([]);
+    // Note: Single click selects item; does NOT open inspector
+  }
+
+  onOpenFile(file: FileItem): void {
+    // Double click: open inspector/preview
+    this.inspectorFile.set(file);
+  }
+
+  onSelectionChange(selection: { folderIds: string[]; fileIds: string[] }): void {
+    this.selectedFolderIds.set(selection.folderIds);
+    this.selectedFileIds.set(selection.fileIds);
+    this.selectedFolderId.set(selection.folderIds.length === 1 && selection.fileIds.length === 0 ? selection.folderIds[0] : null);
+    const singleFile = selection.fileIds.length === 1 && selection.folderIds.length === 0
+      ? (this.folderContent()?.files?.find(f => f.id === selection.fileIds[0]) || null)
+      : null;
+    this.selectedFile.set(singleFile);
+    this.selectedFileId.set(singleFile?.id || null);
+  }
+
+  clearSelection(): void {
+    this.selectedFolderIds.set([]);
+    this.selectedFileIds.set([]);
+    this.selectedFolderId.set(null);
+    this.selectedFileId.set(null);
+    this.selectedFile.set(null);
+  }
+
+  onEmptySpaceClick(): void {
+    this.clearSelection();
+    this.inspectorFile.set(null);
   }
 
   onDownloadFile(file: FileItem): void {
@@ -1001,9 +1695,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
         a.download = file.name;
         a.click();
         window.URL.revokeObjectURL(url);
+        this.toastService.success(`Downloaded ${file.name}`);
       },
       error: () => {
-        // Fallback to direct download endpoint
         window.open(this.apiService.getDownloadUrl(file.id), '_blank');
       }
     });
@@ -1023,6 +1717,10 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
         if (this.selectedFile()?.id === file.id) {
           this.selectedFile.set(updated);
         }
+        if (this.inspectorFile()?.id === file.id) {
+          this.inspectorFile.set(updated);
+        }
+        this.toastService.info(nextVal ? 'Added to favorites' : 'Removed from favorites');
       }
     });
   }
@@ -1052,45 +1750,139 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     }
   }
 
-  onWindowDrop(event: DragEvent): void {
+  async onWindowDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
     this.isDraggingOver.set(false);
     this.dragCounter = 0;
 
-    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-      this.uploader.enqueue(
-        event.dataTransfer.files,
-        this.currentFolderId(),
-        this.currentFolderName()
-      );
+    if (event.dataTransfer) {
+      const files = await this.extractFilesFromDataTransfer(event.dataTransfer);
+      if (files.length > 0) {
+        this.queuedFiles.set(files);
+        this.isUploadQueueOpen.set(true);
+      }
     }
   }
 
   onFileInputChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
-      this.uploader.enqueue(
-        input.files,
-        this.currentFolderId(),
-        this.currentFolderName()
-      );
+      this.queuedFiles.set(Array.from(input.files));
+      this.isUploadQueueOpen.set(true);
       input.value = '';
     }
   }
 
-  // Drag-and-drop file onto folder to move file
-  onFolderDrop(payload: { targetFolder: FolderItem; fileId: string }): void {
-    this.apiService.updateFile(payload.fileId, { folderId: payload.targetFolder.id }).subscribe({
-      next: () => {
-        this.loadCurrentFolder();
+  onStartUploadFromQueue(event: { files: File[]; resolutions?: Record<string, 'Replace' | 'Rename' | 'Skip'> }): void {
+    if (!event.files || event.files.length === 0) return;
+
+    for (const file of event.files) {
+      const res = event.resolutions?.[file.name];
+      this.uploader.enqueue([file], this.currentFolderId(), this.currentFolderName(), res, false);
+    }
+    this.toastService.info(`Started uploading ${event.files.length} file(s)`);
+  }
+
+  private async extractFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<File[]> {
+    const items = dataTransfer.items;
+    if (!items || items.length === 0) {
+      return Array.from(dataTransfer.files || []);
+    }
+
+    const fileList: File[] = [];
+    const entries: any[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const entry = (items[i] as any).webkitGetAsEntry?.();
+      if (entry) {
+        entries.push(entry);
+      } else {
+        const f = items[i].getAsFile();
+        if (f) fileList.push(f);
       }
-    });
+    }
+
+    if (entries.length === 0) {
+      return fileList.length > 0 ? fileList : Array.from(dataTransfer.files || []);
+    }
+
+    const traverse = async (entry: any, path: string = ''): Promise<void> => {
+      if (entry.isFile) {
+        await new Promise<void>((resolve) => {
+          entry.file((file: File) => {
+            if (path) {
+              Object.defineProperty(file, 'webkitRelativePath', {
+                value: `${path}/${file.name}`,
+                writable: true
+              });
+            }
+            fileList.push(file);
+            resolve();
+          }, () => resolve());
+        });
+      } else if (entry.isDirectory) {
+        const dirReader = entry.createReader();
+        const readBatch = async (): Promise<any[]> => {
+          return new Promise<any[]>((resolve) => {
+            dirReader.readEntries((res: any[]) => resolve(res || []), () => resolve([]));
+          });
+        };
+        let children = await readBatch();
+        while (children.length > 0) {
+          for (const child of children) {
+            await traverse(child, path ? `${path}/${entry.name}` : entry.name);
+          }
+          children = await readBatch();
+        }
+      }
+    };
+
+    for (const e of entries) {
+      await traverse(e);
+    }
+
+    return fileList.length > 0 ? fileList : Array.from(dataTransfer.files || []);
+  }
+
+  // Drag-and-drop file/items onto folder
+  onFolderDrop(payload: { targetFolder: FolderItem; fileId?: string; fileIds?: string[]; folderIds?: string[] }): void {
+    const fIds = payload.fileIds && payload.fileIds.length > 0 ? payload.fileIds : (payload.fileId ? [payload.fileId] : []);
+    const folderIds = payload.folderIds && payload.folderIds.length > 0 ? payload.folderIds : [];
+
+    if (folderIds.includes(payload.targetFolder.id)) {
+      this.toastService.warning('Cannot move a folder into itself');
+      return;
+    }
+
+    if (fIds.length > 0 || folderIds.length > 0) {
+      this.apiService.bulkMove(fIds, folderIds, payload.targetFolder.id).subscribe({
+        next: () => {
+          this.clearSelection();
+          this.loadCurrentFolder();
+          this.toastService.success(`Moved items into ${payload.targetFolder.name}`);
+        },
+        error: (err) => {
+          if (payload.fileId) {
+            this.apiService.updateFile(payload.fileId, { folderId: payload.targetFolder.id }).subscribe({
+              next: () => {
+                this.loadCurrentFolder();
+                this.toastService.success(`Moved item into ${payload.targetFolder.name}`);
+              }
+            });
+          } else {
+            const msg = err?.error?.message || 'Failed to move items';
+            this.toastService.error(msg);
+          }
+        }
+      });
+    }
   }
 
   // Context Menu Handlers
   onFolderContextMenu(payload: { event: MouseEvent; folder: FolderItem }): void {
     this.contextTargetFolder = payload.folder;
     this.contextTargetFile = null;
+    this.isWorkspaceContext = false;
     this.contextMenuX.set(payload.event.clientX);
     this.contextMenuY.set(payload.event.clientY);
 
@@ -1105,6 +1897,7 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   onFileContextMenu(payload: { event: MouseEvent; file: FileItem }): void {
     this.contextTargetFile = payload.file;
     this.contextTargetFolder = null;
+    this.isWorkspaceContext = false;
     this.contextMenuX.set(payload.event.clientX);
     this.contextMenuY.set(payload.event.clientY);
 
@@ -1118,7 +1911,40 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     this.contextMenuOpen.set(true);
   }
 
+  onWorkspaceContextMenu(event: MouseEvent): void {
+    this.contextTargetFolder = null;
+    this.contextTargetFile = null;
+    this.isWorkspaceContext = true;
+    this.contextMenuX.set(event.clientX);
+    this.contextMenuY.set(event.clientY);
+
+    this.contextMenuItems.set([
+      { id: 'create_folder', label: 'Создать папку' },
+      { id: 'upload_files', label: 'Загрузить файлы' },
+      { id: 'refresh', label: 'Обновить' },
+      { id: 'folder_properties', label: 'Свойства папки', dividerBefore: true }
+    ]);
+    this.contextMenuOpen.set(true);
+  }
+
   onContextMenuItemClick(actionId: string): void {
+    if (this.isWorkspaceContext) {
+      this.isWorkspaceContext = false;
+      if (actionId === 'create_folder') {
+        this.openCreateFolderModal();
+      } else if (actionId === 'upload_files') {
+        if (this.fileInput) {
+          this.fileInput.nativeElement.click();
+        }
+      } else if (actionId === 'refresh') {
+        this.loadCurrentFolder();
+        this.toastService.info('Папка обновлена');
+      } else if (actionId === 'folder_properties') {
+        this.folderPropertiesModalOpen.set(true);
+      }
+      return;
+    }
+
     if (this.contextTargetFolder) {
       const folder = this.contextTargetFolder;
       if (actionId === 'open') {
@@ -1133,7 +1959,7 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
       if (actionId === 'download') {
         this.onDownloadFile(file);
       } else if (actionId === 'details') {
-        this.selectedFile.set(file);
+        this.inspectorFile.set(file);
       } else if (actionId === 'star') {
         this.onToggleFavorite(file);
       } else if (actionId === 'rename') {
@@ -1142,6 +1968,77 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
         this.openDeleteModal({ type: 'file', id: file.id, name: file.name });
       }
     }
+  }
+
+  // Bulk Actions
+  downloadSelectedZip(): void {
+    const fIds = this.selectedFileIds();
+    const folderIds = this.selectedFolderIds();
+    if (fIds.length === 0 && folderIds.length === 0) return;
+
+    this.toastService.info('Preparing ZIP archive...');
+    this.apiService.downloadZip(fIds, folderIds).subscribe({
+      next: blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `omega-files-${Date.now()}.zip`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        this.toastService.success('Archive downloaded successfully');
+      },
+      error: () => {
+        this.toastService.error('Failed to download ZIP archive');
+      }
+    });
+  }
+
+  openBulkMoveModal(): void {
+    this.bulkMoveTargetFolderId = null;
+    this.bulkMoveModalOpen.set(true);
+  }
+
+  applyBulkMove(): void {
+    const fIds = this.selectedFileIds();
+    const folderIds = this.selectedFolderIds();
+    if (this.bulkMoveTargetFolderId === this.currentFolderId()) {
+      this.toastService.info('Items are already in this folder');
+      this.bulkMoveModalOpen.set(false);
+      return;
+    }
+    this.apiService.bulkMove(fIds, folderIds, this.bulkMoveTargetFolderId).subscribe({
+      next: () => {
+        this.bulkMoveModalOpen.set(false);
+        this.clearSelection();
+        this.loadCurrentFolder();
+        this.toastService.success('Items moved successfully');
+      },
+      error: (err) => {
+        const msg = err?.error?.message || 'Failed to move items';
+        this.toastService.error(msg);
+      }
+    });
+  }
+
+  openBulkDeleteModal(): void {
+    this.bulkDeleteModalOpen.set(true);
+  }
+
+  applyBulkDelete(): void {
+    const fIds = this.selectedFileIds();
+    const folderIds = this.selectedFolderIds();
+    this.apiService.bulkDelete(fIds, folderIds).subscribe({
+      next: () => {
+        this.bulkDeleteModalOpen.set(false);
+        this.clearSelection();
+        this.loadCurrentFolder();
+        this.toastService.success('Items moved to trash');
+      },
+      error: (err) => {
+        const msg = err?.error?.message || 'Failed to delete items';
+        this.toastService.error(msg);
+      }
+    });
   }
 
   // Create Folder Modal
@@ -1162,6 +2059,11 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
       next: () => {
         this.createFolderModalOpen.set(false);
         this.loadCurrentFolder();
+        this.toastService.success(`Folder '${this.newFolderName.trim()}' created`);
+      },
+      error: (err) => {
+        const msg = err?.error?.message || 'Failed to create folder';
+        this.toastService.error(msg);
       }
     });
   }
@@ -1183,16 +2085,27 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
         next: () => {
           this.renameModalOpen.set(false);
           this.loadCurrentFolder();
+          this.toastService.success('Folder renamed');
+        },
+        error: (err) => {
+          this.toastService.error(err?.error?.message || 'Failed to rename folder');
         }
       });
     } else {
       this.apiService.updateFile(id, { name: this.renameItemNewName.trim() }).subscribe({
-        next: () => {
+        next: (updated) => {
           this.renameModalOpen.set(false);
           this.loadCurrentFolder();
           if (this.selectedFile()?.id === id) {
-            this.selectedFile.update(f => f ? { ...f, name: this.renameItemNewName.trim() } : f);
+            this.selectedFile.set(updated);
           }
+          if (this.inspectorFile()?.id === id) {
+            this.inspectorFile.set(updated);
+          }
+          this.toastService.success('File renamed');
+        },
+        error: (err) => {
+          this.toastService.error(err?.error?.message || 'Failed to rename file');
         }
       });
     }
@@ -1214,6 +2127,10 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
         next: () => {
           this.deleteModalOpen.set(false);
           this.loadCurrentFolder();
+          this.toastService.success('Folder moved to trash');
+        },
+        error: (err) => {
+          this.toastService.error(err?.error?.message || 'Failed to delete folder');
         }
       });
     } else {
@@ -1223,7 +2140,14 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
           if (this.selectedFile()?.id === id) {
             this.selectedFile.set(null);
           }
+          if (this.inspectorFile()?.id === id) {
+            this.inspectorFile.set(null);
+          }
           this.loadCurrentFolder();
+          this.toastService.success('File moved to trash');
+        },
+        error: (err) => {
+          this.toastService.error(err?.error?.message || 'Failed to delete file');
         }
       });
     }

@@ -111,7 +111,6 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             <option value="All">All Roles</option>
             <option value="Admin">Admin</option>
             <option value="User">User</option>
-            <option value="Guest">Guest</option>
           </select>
 
           <select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)" class="glass-select">
@@ -148,6 +147,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                   <th>Storage Quota</th>
                   <th>Status</th>
                   <th>Active Sessions</th>
+                  <th>Last Active</th>
                   <th>Created</th>
                   <th class="actions-header">Actions</th>
                 </tr>
@@ -210,6 +210,11 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                         </svg>
                         <span>{{ u.activeSessionsCount }}</span>
                       </div>
+                    </td>
+                    <td>
+                      <span class="created-text" [title]="u.lastActiveAt || u.createdAt">
+                        {{ u.lastActiveAt ? (u.lastActiveAt | relativeTime) : (u.createdAt | relativeTime) }}
+                      </span>
                     </td>
                     <td>
                       <span class="created-text" [title]="u.createdAt">
@@ -308,7 +313,6 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
           <select [(ngModel)]="newRole" class="modal-select">
             <option value="User">User</option>
             <option value="Admin">Admin</option>
-            <option value="Guest">Guest</option>
           </select>
 
           <label>Allocated Quota</label>
@@ -365,7 +369,6 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             >
               <option value="User">User</option>
               <option value="Admin">Admin</option>
-              <option value="Guest">Guest</option>
             </select>
 
             <label>Storage Quota</label>
@@ -791,12 +794,6 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         background: rgba(0, 113, 227, 0.15);
         color: var(--omega-accent);
         border: 1px solid rgba(0, 113, 227, 0.3);
-      }
-
-      &--guest {
-        background: rgba(255, 159, 10, 0.15);
-        color: #ff9f0a;
-        border: 1px solid rgba(255, 159, 10, 0.3);
       }
     }
 

@@ -8,6 +8,15 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent)
   },
   {
+    path: 'dashboard',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
+  },
+  {
+    path: 'shared',
+    loadComponent: () => import('./features/shared-space/shared-space.component').then(m => m.SharedSpaceComponent)
+  },
+  {
     path: 'drive',
     canActivate: [authGuard],
     loadComponent: () => import('./features/drive/drive-layout/drive-layout.component').then(m => m.DriveLayoutComponent)

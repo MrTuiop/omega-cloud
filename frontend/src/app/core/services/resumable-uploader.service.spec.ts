@@ -129,6 +129,7 @@ describe('ResumableUploaderService', () => {
         sizeBytes: 12,
         isDeleted: false,
         isFavorite: false,
+        isShared: false,
         createdAt: '',
         updatedAt: ''
       }

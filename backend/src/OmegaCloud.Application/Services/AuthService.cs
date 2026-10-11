@@ -13,19 +13,22 @@ public class AuthService : IAuthService
     private readonly IJwtProvider _jwtProvider;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IRealtimeNotifier _notifier;
+    private readonly ISessionRevocationCache? _revocationCache;
 
     public AuthService(
         IAppDbContext dbContext,
         IPasswordHasher passwordHasher,
         IJwtProvider jwtProvider,
         IDateTimeProvider dateTimeProvider,
-        IRealtimeNotifier? notifier = null)
+        IRealtimeNotifier? notifier = null,
+        ISessionRevocationCache? revocationCache = null)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtProvider = jwtProvider;
         _dateTimeProvider = dateTimeProvider;
         _notifier = notifier ?? NullRealtimeNotifier.Instance;
+        _revocationCache = revocationCache;
     }
 
     public async Task<LoginResponse> LoginAsync(
@@ -132,6 +135,7 @@ public class AuthService : IAuthService
             foreach (var activeSession in activeSessions)
             {
                 activeSession.RevokedAt = now;
+                _revocationCache?.Revoke(activeSession.Id);
             }
 
             await _dbContext.SaveChangesAsync(ct);
@@ -148,6 +152,7 @@ public class AuthService : IAuthService
         if (session.ExpiresAt <= now)
         {
             session.RevokedAt = now;
+            _revocationCache?.Revoke(session.Id);
             await _dbContext.SaveChangesAsync(ct);
             throw new UnauthorizedException("Refresh token has expired.");
         }
@@ -162,6 +167,7 @@ public class AuthService : IAuthService
         var newRefreshTokenHash = _jwtProvider.HashRefreshToken(newRefreshToken);
 
         session.RevokedAt = now;
+        _revocationCache?.Revoke(session.Id);
         session.ReplacedByTokenHash = newRefreshTokenHash;
         session.LastActiveAt = now;
 
@@ -212,6 +218,7 @@ public class AuthService : IAuthService
             if (session != null && session.RevokedAt == null)
             {
                 session.RevokedAt = now;
+                _revocationCache?.Revoke(session.Id);
                 hasChanges = true;
             }
         }
@@ -226,6 +233,7 @@ public class AuthService : IAuthService
             if (sessionByHash != null && sessionByHash.RevokedAt == null)
             {
                 sessionByHash.RevokedAt = now;
+                _revocationCache?.Revoke(sessionByHash.Id);
                 hasChanges = true;
             }
         }
@@ -293,6 +301,7 @@ public class AuthService : IAuthService
         if (session.RevokedAt == null)
         {
             session.RevokedAt = _dateTimeProvider.UtcNow;
+            _revocationCache?.Revoke(sessionId);
             await _dbContext.SaveChangesAsync(ct);
             await _notifier.NotifyForceLogoutAsync(userId, "Session was revoked.", sessionId, ct);
         }

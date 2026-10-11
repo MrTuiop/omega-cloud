@@ -25,6 +25,7 @@ describe('StorageNodesComponent', () => {
       status: 'Online',
       totalSpaceBytes: 1_000_000,
       availableSpaceBytes: 800_000,
+      maxCapacityBytes: 1_000_000,
       usedSpaceBytes: 200_000,
       freeSpacePercentage: 80,
       usedSpacePercentage: 20,
@@ -46,6 +47,7 @@ describe('StorageNodesComponent', () => {
       status: 'Offline',
       totalSpaceBytes: 2_000_000,
       availableSpaceBytes: 1_000_000,
+      maxCapacityBytes: 2_000_000,
       usedSpaceBytes: 1_000_000,
       freeSpacePercentage: 50,
       usedSpacePercentage: 50,
@@ -169,7 +171,8 @@ describe('StorageNodesComponent', () => {
       name: 'Home-NAS-Updated',
       baseUrl: 'https://nas.local:5001',
       isBehindNat: true,
-      status: 'Offline'
+      status: 'Offline',
+      maxCapacityBytes: 2_000_000
     });
     expect(component.editNodeModalOpen()).toBeFalse();
   });

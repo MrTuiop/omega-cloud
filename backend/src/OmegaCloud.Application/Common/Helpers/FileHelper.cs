@@ -72,4 +72,26 @@ public static class FileHelper
             _ => "application/octet-stream"
         };
     }
+
+    public static string GenerateUniqueFileName(string fileName, Func<string, bool> existsFunc)
+    {
+        if (!existsFunc(fileName))
+        {
+            return fileName;
+        }
+
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+        var ext = Path.GetExtension(fileName);
+
+        int counter = 1;
+        while (true)
+        {
+            var candidate = $"{nameWithoutExt} ({counter}){ext}";
+            if (!existsFunc(candidate))
+            {
+                return candidate;
+            }
+            counter++;
+        }
+    }
 }

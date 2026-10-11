@@ -128,16 +128,16 @@ describe('UsersManagementComponent', () => {
   it('should save user edit', () => {
     const updatedUser: AdminUser = {
       ...mockUsers[0],
-      role: 'Guest'
+      role: 'Admin'
     };
     spyOn(apiService, 'updateAdminUser').and.returnValue(of(updatedUser));
 
     component.openEditModal(mockUsers[0]);
-    component.editRole = 'Guest';
+    component.editRole = 'Admin';
     component.saveUserEdit();
 
     expect(apiService.updateAdminUser).toHaveBeenCalledWith('u-1', {
-      role: 'Guest',
+      role: 'Admin',
       allocatedQuotaBytes: mockUsers[0].allocatedQuotaBytes,
       isActive: true
     });

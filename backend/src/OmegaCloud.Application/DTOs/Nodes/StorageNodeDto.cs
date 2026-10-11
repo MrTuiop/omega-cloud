@@ -10,6 +10,7 @@ public class StorageNodeDto
     public string Status { get; set; } = string.Empty;
     public long TotalSpaceBytes { get; set; }
     public long AvailableSpaceBytes { get; set; }
+    public long MaxCapacityBytes { get; set; }
     public long UsedSpaceBytes => Math.Max(0, TotalSpaceBytes - AvailableSpaceBytes);
     public double FreeSpacePercentage => TotalSpaceBytes > 0 ? Math.Round((double)AvailableSpaceBytes / TotalSpaceBytes * 100, 2) : 0;
     public double UsedSpacePercentage => TotalSpaceBytes > 0 ? Math.Round((double)UsedSpaceBytes / TotalSpaceBytes * 100, 2) : 0;

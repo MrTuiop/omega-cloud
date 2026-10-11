@@ -90,6 +90,10 @@ public class NodeService : INodeService
         if (request.TotalSpaceBytes > 0)
         {
             node.TotalSpaceBytes = request.TotalSpaceBytes;
+            if (node.MaxCapacityBytes == 0)
+            {
+                node.MaxCapacityBytes = request.TotalSpaceBytes;
+            }
         }
         if (request.AvailableSpaceBytes >= 0)
         {
@@ -202,6 +206,10 @@ public class NodeService : INodeService
         if (request.TotalSpaceBytes > 0)
         {
             node.TotalSpaceBytes = request.TotalSpaceBytes;
+            if (node.MaxCapacityBytes == 0)
+            {
+                node.MaxCapacityBytes = request.TotalSpaceBytes;
+            }
         }
         if (request.AvailableSpaceBytes >= 0)
         {
@@ -520,6 +528,33 @@ public class NodeService : INodeService
             node.IsActive = request.IsActive.Value;
         }
 
+        if (request.MaxCapacityBytes.HasValue)
+        {
+            if (request.MaxCapacityBytes.Value < 0)
+            {
+                throw new ValidationException("Max capacity cannot be negative.");
+            }
+            node.MaxCapacityBytes = request.MaxCapacityBytes.Value;
+        }
+
+        if (request.MaxCapacityBytes.HasValue || request.IsActive.HasValue)
+        {
+            var otherActiveCapacity = await _dbContext.StorageNodes
+                .Where(n => n.Id != node.Id && n.IsActive)
+                .SumAsync(n => n.MaxCapacityBytes, ct);
+
+            var totalActiveCapacity = otherActiveCapacity + (node.IsActive ? node.MaxCapacityBytes : 0L);
+
+            var totalAllocatedQuota = await _dbContext.Users
+                .SumAsync(u => u.AllocatedQuotaBytes, ct);
+
+            if (totalAllocatedQuota > totalActiveCapacity)
+            {
+                throw new ValidationException(
+                    $"Cannot update node capacity or active status. Total user quotas ({totalAllocatedQuota} bytes) would exceed active storage nodes capacity ({totalActiveCapacity} bytes).");
+            }
+        }
+
         await _dbContext.SaveChangesAsync(ct);
 
         if (previousStatus != node.Status)
@@ -662,6 +697,7 @@ public class NodeService : INodeService
             Status = n.Status.ToString(),
             TotalSpaceBytes = n.TotalSpaceBytes,
             AvailableSpaceBytes = n.AvailableSpaceBytes,
+            MaxCapacityBytes = n.MaxCapacityBytes,
             CpuLoad = n.CpuLoad,
             DiskStatus = n.DiskStatus,
             LatencyMs = n.LatencyMs,

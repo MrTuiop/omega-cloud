@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ElementRef, ViewChild, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FolderItem, FileItem } from '../../../core/models/file.models';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
@@ -10,7 +10,23 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
   standalone: true,
   imports: [CommonModule, FileSizePipe, RelativeTimePipe],
   template: `
-    <div class="grid-container">
+    <div
+      #gridContainer
+      class="grid-container"
+      (mousedown)="onContainerMouseDown($event)"
+      (contextmenu)="onContainerContextMenu($event)"
+    >
+      <!-- Marquee Selection Rectangle -->
+      @if (isMarqueeActive && (marqueeBox.width > 3 || marqueeBox.height > 3)) {
+        <div
+          class="marquee-box"
+          [style.left.px]="marqueeBox.left"
+          [style.top.px]="marqueeBox.top"
+          [style.width.px]="marqueeBox.width"
+          [style.height.px]="marqueeBox.height"
+        ></div>
+      }
+
       <!-- Folders Section -->
       @if (folders.length > 0) {
         <div class="section-title">Folders</div>
@@ -18,14 +34,19 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
           @for (folder of folders; track folder.id) {
             <div
               class="folder-card"
-              [class.folder-card--selected]="selectedFolderId === folder.id"
+              [attr.data-id]="folder.id"
+              [attr.data-type]="'folder'"
+              [class.folder-card--selected]="isFolderSelected(folder.id)"
               [class.folder-card--dragover]="dragOverFolderId === folder.id"
-              (click)="onSelectFolder(folder)"
+              [draggable]="!isTouchDevice"
+              (click)="onFolderClick($event, folder)"
               (dblclick)="openFolder.emit(folder)"
               (contextmenu)="onFolderContextMenu($event, folder)"
+              (dragstart)="onFolderDragStart($event, folder)"
               (dragover)="onFolderDragOver($event, folder)"
               (dragleave)="onFolderDragLeave(folder)"
               (drop)="onFolderDrop($event, folder)"
+              (touchstart)="onTouchStart()"
             >
               <div class="folder-icon" [style.color]="folder.color || 'var(--omega-accent)'">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
@@ -48,12 +69,15 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
           @for (file of files; track file.id) {
             <div
               class="file-card"
-              [class.file-card--selected]="selectedFileId === file.id"
-              (click)="onSelectFile(file)"
-              (dblclick)="downloadFile.emit(file)"
+              [attr.data-id]="file.id"
+              [attr.data-type]="'file'"
+              [class.file-card--selected]="isFileSelected(file.id)"
+              [draggable]="!isTouchDevice"
+              (click)="onFileClick($event, file)"
+              (dblclick)="onFileDoubleClick(file)"
               (contextmenu)="onFileContextMenu($event, file)"
-              draggable="true"
               (dragstart)="onFileDragStart($event, file)"
+              (touchstart)="onTouchStart()"
             >
               <button
                 class="star-btn"
@@ -106,6 +130,20 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
       display: flex;
       flex-direction: column;
       gap: 16px;
+      position: relative;
+      user-select: none;
+      -webkit-user-select: none;
+      min-height: 100%;
+    }
+
+    .marquee-box {
+      position: absolute;
+      border: 1px solid var(--omega-accent);
+      background: rgba(0, 113, 227, 0.16);
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 50;
+      backdrop-filter: blur(1px);
     }
 
     .section-title {
@@ -144,15 +182,16 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
       }
 
       &--selected {
-        border-color: var(--omega-accent);
-        box-shadow: 0 0 0 2px var(--omega-accent), var(--omega-shadow-sm);
-        background: var(--omega-accent-subtle);
+        border-color: var(--omega-accent) !important;
+        box-shadow: 0 0 0 2px var(--omega-accent), var(--omega-shadow-sm) !important;
+        background: var(--omega-accent-subtle) !important;
       }
 
       &--dragover {
-        border-color: var(--omega-accent);
-        background: var(--omega-accent-subtle);
-        transform: scale(1.02);
+        border-color: var(--omega-accent) !important;
+        background: var(--omega-accent-subtle) !important;
+        transform: scale(1.03) !important;
+        box-shadow: 0 0 24px rgba(0, 113, 227, 0.55), 0 0 0 2px var(--omega-accent) !important;
       }
     }
 
@@ -211,9 +250,9 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
       }
 
       &--selected {
-        border-color: var(--omega-accent);
-        box-shadow: 0 0 0 2px var(--omega-accent), var(--omega-shadow-sm);
-        background: var(--omega-accent-subtle);
+        border-color: var(--omega-accent) !important;
+        box-shadow: 0 0 0 2px var(--omega-accent), var(--omega-shadow-sm) !important;
+        background: var(--omega-accent-subtle) !important;
       }
     }
 
@@ -321,22 +360,52 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
   `]
 })
 export class FileGridComponent {
+  @ViewChild('gridContainer') gridContainerRef!: ElementRef<HTMLDivElement>;
+
   @Input() folders: FolderItem[] = [];
   @Input() files: FileItem[] = [];
   @Input() selectedFolderId: string | null = null;
   @Input() selectedFileId: string | null = null;
+  @Input() selectedFolderIds: string[] = [];
+  @Input() selectedFileIds: string[] = [];
 
   @Output() selectFolder = new EventEmitter<FolderItem>();
   @Output() openFolder = new EventEmitter<FolderItem>();
   @Output() folderContextMenu = new EventEmitter<{ event: MouseEvent; folder: FolderItem }>();
-  @Output() folderDrop = new EventEmitter<{ targetFolder: FolderItem; fileId: string }>();
+  @Output() folderDrop = new EventEmitter<{ targetFolder: FolderItem; fileId?: string; fileIds?: string[]; folderIds?: string[] }>();
 
   @Output() selectFile = new EventEmitter<FileItem>();
+  @Output() openFile = new EventEmitter<FileItem>();
   @Output() downloadFile = new EventEmitter<FileItem>();
   @Output() toggleFavorite = new EventEmitter<FileItem>();
   @Output() fileContextMenu = new EventEmitter<{ event: MouseEvent; file: FileItem }>();
+  @Output() selectionChange = new EventEmitter<{ folderIds: string[]; fileIds: string[] }>();
+  @Output() workspaceContextMenu = new EventEmitter<MouseEvent>();
+  @Output() emptySpaceClick = new EventEmitter<MouseEvent>();
 
   dragOverFolderId: string | null = null;
+  isTouchDevice = false;
+
+  // Marquee state
+  isMarqueeActive = false;
+  private marqueeStartX = 0;
+  private marqueeStartY = 0;
+  private marqueeStartScrollTop = 0;
+  private marqueeStartScrollLeft = 0;
+  marqueeBox = { left: 0, top: 0, width: 0, height: 0 };
+  private marqueeInitialFolderIds: string[] = [];
+  private marqueeInitialFileIds: string[] = [];
+
+  // Pivot for shift range selection
+  private lastPivot: { type: 'folder' | 'file'; id: string } | null = null;
+
+  isFolderSelected(id: string): boolean {
+    return this.selectedFolderIds.includes(id) || this.selectedFolderId === id;
+  }
+
+  isFileSelected(id: string): boolean {
+    return this.selectedFileIds.includes(id) || this.selectedFileId === id;
+  }
 
   getFileBadge(file: FileItem): string {
     return getFileTypeInfo(file.extension, file.mimeType).badge;
@@ -346,12 +415,84 @@ export class FileGridComponent {
     return getFileTypeInfo(file.extension, file.mimeType).color;
   }
 
-  onSelectFolder(folder: FolderItem): void {
+  onTouchStart(): void {
+    this.isTouchDevice = true;
+  }
+
+  onFolderClick(event: MouseEvent, folder: FolderItem): void {
+    event.stopPropagation();
+    this.handleItemSelection(event, 'folder', folder.id);
     this.selectFolder.emit(folder);
   }
 
-  onSelectFile(file: FileItem): void {
+  onFileClick(event: MouseEvent, file: FileItem): void {
+    event.stopPropagation();
+    this.handleItemSelection(event, 'file', file.id);
     this.selectFile.emit(file);
+  }
+
+  onFileDoubleClick(file: FileItem): void {
+    this.openFile.emit(file);
+  }
+
+  private handleItemSelection(event: MouseEvent, type: 'folder' | 'file', id: string): void {
+    const isCtrl = event.ctrlKey || event.metaKey;
+    const isShift = event.shiftKey;
+
+    let nextFolderIds = [...this.selectedFolderIds];
+    let nextFileIds = [...this.selectedFileIds];
+
+    if (isCtrl) {
+      if (type === 'folder') {
+        nextFolderIds = nextFolderIds.includes(id)
+          ? nextFolderIds.filter(fId => fId !== id)
+          : [...nextFolderIds, id];
+      } else {
+        nextFileIds = nextFileIds.includes(id)
+          ? nextFileIds.filter(fId => fId !== id)
+          : [...nextFileIds, id];
+      }
+      this.lastPivot = { type, id };
+    } else if (isShift && this.lastPivot) {
+      const allItems = this.getAllOrderedItems();
+      const pivotIdx = allItems.findIndex(i => i.type === this.lastPivot!.type && i.id === this.lastPivot!.id);
+      const currentIdx = allItems.findIndex(i => i.type === type && i.id === id);
+
+      if (pivotIdx !== -1 && currentIdx !== -1) {
+        const start = Math.min(pivotIdx, currentIdx);
+        const end = Math.max(pivotIdx, currentIdx);
+        const range = allItems.slice(start, end + 1);
+
+        nextFolderIds = range.filter(i => i.type === 'folder').map(i => i.id);
+        nextFileIds = range.filter(i => i.type === 'file').map(i => i.id);
+      } else {
+        nextFolderIds = type === 'folder' ? [id] : [];
+        nextFileIds = type === 'file' ? [id] : [];
+        this.lastPivot = { type, id };
+      }
+    } else {
+      // Normal single selection
+      nextFolderIds = type === 'folder' ? [id] : [];
+      nextFileIds = type === 'file' ? [id] : [];
+      this.lastPivot = { type, id };
+    }
+
+    this.selectedFolderIds = nextFolderIds;
+    this.selectedFileIds = nextFileIds;
+    this.selectedFolderId = nextFolderIds.length === 1 && nextFileIds.length === 0 ? nextFolderIds[0] : null;
+    this.selectedFileId = nextFileIds.length === 1 && nextFolderIds.length === 0 ? nextFileIds[0] : null;
+
+    this.selectionChange.emit({
+      folderIds: nextFolderIds,
+      fileIds: nextFileIds
+    });
+  }
+
+  private getAllOrderedItems(): { type: 'folder' | 'file'; id: string }[] {
+    return [
+      ...this.folders.map(f => ({ type: 'folder' as const, id: f.id })),
+      ...this.files.map(f => ({ type: 'file' as const, id: f.id }))
+    ];
   }
 
   onToggleFavorite(event: MouseEvent, file: FileItem): void {
@@ -362,23 +503,179 @@ export class FileGridComponent {
   onFolderContextMenu(event: MouseEvent, folder: FolderItem): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.isFolderSelected(folder.id)) {
+      this.selectedFolderIds = [folder.id];
+      this.selectedFileIds = [];
+      this.selectionChange.emit({ folderIds: [folder.id], fileIds: [] });
+    }
     this.folderContextMenu.emit({ event, folder });
   }
 
   onFileContextMenu(event: MouseEvent, file: FileItem): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.isFileSelected(file.id)) {
+      this.selectedFolderIds = [];
+      this.selectedFileIds = [file.id];
+      this.selectionChange.emit({ folderIds: [], fileIds: [file.id] });
+    }
     this.fileContextMenu.emit({ event, file });
   }
 
-  onFileDragStart(event: DragEvent, file: FileItem): void {
+  onContainerContextMenu(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (target.closest('.folder-card, .file-card, button, input')) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.workspaceContextMenu.emit(event);
+  }
+
+  onContainerMouseDown(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (target.closest('.folder-card, .file-card, button, input')) {
+      return;
+    }
+
+    if (event.button !== 0) return; // Only left click for marquee
+
+    const isCtrl = event.ctrlKey || event.metaKey;
+    if (!isCtrl && !event.shiftKey) {
+      this.selectedFolderIds = [];
+      this.selectedFileIds = [];
+      this.selectedFolderId = null;
+      this.selectedFileId = null;
+      this.selectionChange.emit({ folderIds: [], fileIds: [] });
+      this.emptySpaceClick.emit(event);
+    }
+
+    this.marqueeInitialFolderIds = isCtrl ? [...this.selectedFolderIds] : [];
+    this.marqueeInitialFileIds = isCtrl ? [...this.selectedFileIds] : [];
+
+    this.isMarqueeActive = true;
+    this.marqueeStartX = event.clientX;
+    this.marqueeStartY = event.clientY;
+
+    if (this.gridContainerRef) {
+      const parent = this.gridContainerRef.nativeElement.parentElement;
+      this.marqueeStartScrollTop = parent?.scrollTop || 0;
+      this.marqueeStartScrollLeft = parent?.scrollLeft || 0;
+
+      const rect = this.gridContainerRef.nativeElement.getBoundingClientRect();
+      this.marqueeBox = {
+        left: event.clientX - rect.left,
+        top: event.clientY - rect.top,
+        width: 0,
+        height: 0
+      };
+    }
+  }
+
+  @HostListener('document:mousemove', ['$event'])
+  onDocumentMouseMove(event: MouseEvent): void {
+    if (!this.isMarqueeActive || !this.gridContainerRef) return;
+
+    const containerEl = this.gridContainerRef.nativeElement;
+    const parent = containerEl.parentElement;
+    const scrollDiffY = (parent?.scrollTop || 0) - this.marqueeStartScrollTop;
+    const scrollDiffX = (parent?.scrollLeft || 0) - this.marqueeStartScrollLeft;
+
+    const containerRect = containerEl.getBoundingClientRect();
+
+    const startX = this.marqueeStartX - scrollDiffX;
+    const startY = this.marqueeStartY - scrollDiffY;
+
+    const minX = Math.min(startX, event.clientX);
+    const maxX = Math.max(startX, event.clientX);
+    const minY = Math.min(startY, event.clientY);
+    const maxY = Math.max(startY, event.clientY);
+
+    this.marqueeBox = {
+      left: minX - containerRect.left,
+      top: minY - containerRect.top,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+
+    // Calculate intersecting items
+    const selectedFolderSet = new Set<string>(this.marqueeInitialFolderIds);
+    const selectedFileSet = new Set<string>(this.marqueeInitialFileIds);
+
+    const cards = containerEl.querySelectorAll<HTMLElement>('.folder-card, .file-card');
+    cards.forEach(card => {
+      const rect = card.getBoundingClientRect();
+      const intersects = rect.left < maxX && rect.right > minX && rect.top < maxY && rect.bottom > minY;
+      const id = card.getAttribute('data-id');
+      const type = card.getAttribute('data-type');
+      if (id) {
+        if (intersects) {
+          if (type === 'folder') selectedFolderSet.add(id);
+          else selectedFileSet.add(id);
+        } else if (!this.marqueeInitialFolderIds.includes(id) && !this.marqueeInitialFileIds.includes(id)) {
+          if (type === 'folder') selectedFolderSet.delete(id);
+          else selectedFileSet.delete(id);
+        }
+      }
+    });
+
+    this.selectedFolderIds = Array.from(selectedFolderSet);
+    this.selectedFileIds = Array.from(selectedFileSet);
+    this.selectedFolderId = this.selectedFolderIds.length === 1 && this.selectedFileIds.length === 0 ? this.selectedFolderIds[0] : null;
+    this.selectedFileId = this.selectedFileIds.length === 1 && this.selectedFolderIds.length === 0 ? this.selectedFileIds[0] : null;
+  }
+
+  @HostListener('document:mouseup')
+  onDocumentMouseUp(): void {
+    if (this.isMarqueeActive) {
+      this.isMarqueeActive = false;
+      this.selectionChange.emit({
+        folderIds: this.selectedFolderIds,
+        fileIds: this.selectedFileIds
+      });
+    }
+  }
+
+  // Drag and Drop
+  onFolderDragStart(event: DragEvent, folder: FolderItem): void {
+    if (!this.isFolderSelected(folder.id)) {
+      this.selectedFolderIds = [folder.id];
+      this.selectedFileIds = [];
+      this.selectionChange.emit({ folderIds: [folder.id], fileIds: [] });
+    }
     if (event.dataTransfer) {
-      event.dataTransfer.setData('application/json', JSON.stringify({ fileId: file.id }));
+      event.dataTransfer.setData('application/json', JSON.stringify({
+        folderIds: this.selectedFolderIds,
+        fileIds: this.selectedFileIds,
+        fileId: null
+      }));
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onFileDragStart(event: DragEvent, file: FileItem): void {
+    if (!this.isFileSelected(file.id)) {
+      this.selectedFileIds = [file.id];
+      this.selectedFolderIds = [];
+      this.selectionChange.emit({ folderIds: [], fileIds: [file.id] });
+    }
+    if (event.dataTransfer) {
+      event.dataTransfer.setData('application/json', JSON.stringify({
+        folderIds: this.selectedFolderIds,
+        fileIds: this.selectedFileIds,
+        fileId: file.id
+      }));
       event.dataTransfer.effectAllowed = 'move';
     }
   }
 
   onFolderDragOver(event: DragEvent, folder: FolderItem): void {
+    if (this.selectedFolderIds.includes(folder.id)) {
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'none';
+      }
+      return;
+    }
     event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
@@ -395,14 +692,23 @@ export class FileGridComponent {
   onFolderDrop(event: DragEvent, targetFolder: FolderItem): void {
     event.preventDefault();
     this.dragOverFolderId = null;
+    if (this.selectedFolderIds.includes(targetFolder.id)) {
+      return;
+    }
     if (event.dataTransfer) {
       const dataStr = event.dataTransfer.getData('application/json');
       if (dataStr) {
         try {
           const data = JSON.parse(dataStr);
-          if (data.fileId) {
-            this.folderDrop.emit({ targetFolder, fileId: data.fileId });
+          if (data.folderIds && data.folderIds.includes(targetFolder.id)) {
+            return;
           }
+          this.folderDrop.emit({
+            targetFolder,
+            fileId: data.fileId || (data.fileIds && data.fileIds.length > 0 ? data.fileIds[0] : undefined),
+            fileIds: data.fileIds || (data.fileId ? [data.fileId] : []),
+            folderIds: data.folderIds || []
+          });
         } catch {
           // Ignore
         }

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 using OmegaCloud.Application.Common.Exceptions;
 using OmegaCloud.Application.Common.Helpers;
@@ -15,17 +16,20 @@ public class FileService : IFileService
     private readonly IStorageDriverResolver _driverResolver;
     private readonly IRealtimeNotifier _notifier;
     private readonly IAuditService? _auditService;
+    private readonly IThumbnailService? _thumbnailService;
 
     public FileService(
         IAppDbContext dbContext,
         IStorageDriverResolver driverResolver,
         IRealtimeNotifier? notifier = null,
-        IAuditService? auditService = null)
+        IAuditService? auditService = null,
+        IThumbnailService? thumbnailService = null)
     {
         _dbContext = dbContext;
         _driverResolver = driverResolver;
         _notifier = notifier ?? NullRealtimeNotifier.Instance;
         _auditService = auditService;
+        _thumbnailService = thumbnailService;
     }
 
     public async Task<FileItemDto> UploadFileAsync(UploadFileStreamRequest request, Guid userId, CancellationToken ct = default)
@@ -66,23 +70,90 @@ public class FileService : IFileService
 
         var validatedFileName = ValidateFileName(request.FileName);
 
+        Folder? targetFolder = null;
         if (request.FolderId.HasValue)
         {
-            var folderExists = await _dbContext.Folders
-                .AnyAsync(f => f.Id == request.FolderId.Value && f.UserId == userId && !f.IsDeleted, ct);
+            if (request.IsShared == true)
+            {
+                targetFolder = await _dbContext.Folders
+                    .FirstOrDefaultAsync(f => f.Id == request.FolderId.Value && f.IsShared && !f.IsDeleted, ct);
+            }
+            else
+            {
+                targetFolder = await _dbContext.Folders
+                    .FirstOrDefaultAsync(f => f.Id == request.FolderId.Value && (f.UserId == userId || f.IsShared) && !f.IsDeleted, ct);
+            }
 
-            if (!folderExists)
+            if (targetFolder == null)
             {
                 throw new NotFoundException($"Destination folder with ID '{request.FolderId.Value}' was not found.");
             }
         }
 
-        var isDuplicate = await _dbContext.FileItems
-            .AnyAsync(f => f.UserId == userId && f.FolderId == request.FolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
+        var isShared = request.IsShared == true || (targetFolder?.IsShared ?? false);
 
-        if (isDuplicate)
+        FileItem? existingFile = null;
+        if (isShared)
         {
-            throw new ValidationException($"A file named '{validatedFileName}' already exists in this folder.");
+            existingFile = await _dbContext.FileItems
+                .Include(f => f.StorageBlob)
+                .FirstOrDefaultAsync(f => f.IsShared && f.FolderId == request.FolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
+        }
+        else
+        {
+            existingFile = await _dbContext.FileItems
+                .Include(f => f.StorageBlob)
+                .FirstOrDefaultAsync(f => f.UserId == userId && f.FolderId == request.FolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
+        }
+
+        if (existingFile != null)
+        {
+            var strategy = request.ConflictResolution ?? ConflictResolutionStrategy.None;
+            if (strategy == ConflictResolutionStrategy.Skip)
+            {
+                return MapToFileDto(existingFile);
+            }
+            else if (strategy == ConflictResolutionStrategy.Rename)
+            {
+                var existingNames = await (isShared
+                    ? _dbContext.FileItems.Where(f => f.IsShared && f.FolderId == request.FolderId && !f.IsDeleted).Select(f => f.Name).ToListAsync(ct)
+                    : _dbContext.FileItems.Where(f => f.UserId == userId && f.FolderId == request.FolderId && !f.IsDeleted).Select(f => f.Name).ToListAsync(ct));
+                var nameSet = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+                validatedFileName = FileHelper.GenerateUniqueFileName(validatedFileName, nameSet.Contains);
+                existingFile = null;
+            }
+            else if (strategy == ConflictResolutionStrategy.Replace)
+            {
+                if (existingFile.IsShared && existingFile.UserId != userId && user.Role != UserRole.Admin)
+                {
+                    throw new ForbiddenException("You do not have permission to replace this shared file. Only the author or an admin can replace it.");
+                }
+
+                if (request.SizeBytes.HasValue && request.SizeBytes.Value > 0)
+                {
+                    if (existingFile.UserId == userId)
+                    {
+                        var quotaDiff = request.SizeBytes.Value - existingFile.SizeBytes;
+                        if (quotaDiff > 0 && user.UsedQuotaBytes + quotaDiff > user.AllocatedQuotaBytes)
+                        {
+                            var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                            throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Required: {quotaDiff} bytes.");
+                        }
+                    }
+                    else
+                    {
+                        if (user.UsedQuotaBytes + request.SizeBytes.Value > user.AllocatedQuotaBytes)
+                        {
+                            var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                            throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, File size: {request.SizeBytes.Value} bytes.");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                throw new ValidationException($"A file named '{validatedFileName}' already exists in this folder.");
+            }
         }
 
         StorageNode targetNode;
@@ -99,11 +170,32 @@ public class FileService : IFileService
         }
         else
         {
-            targetNode = await _dbContext.StorageNodes
-                .FirstOrDefaultAsync(n => n.Type == StorageNodeType.LocalDisk && n.Status == StorageNodeStatus.Online && n.IsActive, ct)
-                ?? await _dbContext.StorageNodes
-                    .FirstOrDefaultAsync(n => n.Status == StorageNodeStatus.Online && n.IsActive, ct)
-                ?? throw new InvalidOperationException("No online storage node is available.");
+            var candidateNodes = await _dbContext.StorageNodes
+                .Where(n => n.IsActive && n.Status == StorageNodeStatus.Online)
+                .ToListAsync(ct);
+
+            if (candidateNodes.Count == 0)
+            {
+                candidateNodes = await _dbContext.StorageNodes
+                    .Where(n => n.IsActive)
+                    .ToListAsync(ct);
+            }
+
+            if (candidateNodes.Count == 0)
+            {
+                throw new InvalidOperationException("No online storage node is available.");
+            }
+
+            // Balanced node selection: active node with maximum free volume: MaxCapacityBytes - UsedBytes bounded by physical AvailableSpaceBytes
+            targetNode = candidateNodes
+                .OrderByDescending(n =>
+                {
+                    var usedBytes = Math.Max(0, n.TotalSpaceBytes - n.AvailableSpaceBytes);
+                    var capacityRemaining = n.MaxCapacityBytes > 0 ? Math.Max(0, n.MaxCapacityBytes - usedBytes) : n.AvailableSpaceBytes;
+                    return Math.Min(n.AvailableSpaceBytes, capacityRemaining);
+                })
+                .ThenBy(n => n.Type == StorageNodeType.LocalDisk ? 0 : 1)
+                .First();
         }
 
         var driver = _driverResolver.GetDriverForNode(targetNode);
@@ -188,6 +280,86 @@ public class FileService : IFileService
             : request.ContentType;
 
         var now = DateTime.UtcNow;
+
+        if (existingFile != null)
+        {
+            if (existingFile.UserId == userId)
+            {
+                var quotaDiff = writeResult.SizeBytes - existingFile.SizeBytes;
+                if (quotaDiff > 0 && user.UsedQuotaBytes + quotaDiff > user.AllocatedQuotaBytes)
+                {
+                    try
+                    {
+                        await driver.DeleteAsync(new StorageBlob { StorageRelativePath = writeResult.StorageRelativePath }, ct);
+                    }
+                    catch {}
+                    var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+                    throw new ValidationException($"User quota exceeded. Available: {remainingQuota} bytes, Required: {quotaDiff} bytes.");
+                }
+                user.UsedQuotaBytes += quotaDiff;
+            }
+            else
+            {
+                var oldAuthor = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == existingFile.UserId, ct);
+                if (oldAuthor != null)
+                {
+                    oldAuthor.UsedQuotaBytes = Math.Max(0, oldAuthor.UsedQuotaBytes - existingFile.SizeBytes);
+                    await _notifier.NotifyQuotaUpdatedAsync(oldAuthor.Id, oldAuthor.UsedQuotaBytes, oldAuthor.AllocatedQuotaBytes, ct);
+                }
+                user.UsedQuotaBytes += writeResult.SizeBytes;
+                existingFile.UserId = userId;
+            }
+
+            var oldBlob = existingFile.StorageBlob;
+            existingFile.StorageBlob = targetBlob;
+            existingFile.StorageBlobId = targetBlob.Id;
+            existingFile.SizeBytes = writeResult.SizeBytes;
+            existingFile.MimeType = mimeType;
+            existingFile.Extension = extension;
+            existingFile.UpdatedAt = now;
+
+            // Decrement old blob reference count if different blob
+            if (oldBlob != null && oldBlob.Id != targetBlob.Id)
+            {
+                oldBlob.ReferenceCount = Math.Max(0, oldBlob.ReferenceCount - 1);
+                if (oldBlob.ReferenceCount <= 0)
+                {
+                    try
+                    {
+                        var oldNode = await _dbContext.StorageNodes.FindAsync(new object[] { oldBlob.StorageNodeId }, ct);
+                        if (oldNode != null)
+                        {
+                            var oldDriver = _driverResolver.GetDriverForNode(oldNode);
+                            await oldDriver.DeleteAsync(oldBlob, ct);
+                        }
+                    }
+                    catch {}
+                    _dbContext.StorageBlobs.Remove(oldBlob);
+                }
+            }
+
+            await _dbContext.SaveChangesAsync(ct);
+
+            var replacedDto = MapToFileDto(existingFile);
+            await _notifier.NotifyDirectoryChangedAsync(userId, request.FolderId, "Updated", replacedDto, ct);
+            await _notifier.NotifyQuotaUpdatedAsync(userId, user.UsedQuotaBytes, user.AllocatedQuotaBytes, ct);
+
+            if (_auditService != null)
+            {
+                await _auditService.LogAsync(
+                    action: "FileReplaced",
+                    resource: "Files",
+                    resourceId: existingFile.Id.ToString(),
+                    userId: userId,
+                    username: user.Username,
+                    ipAddress: null,
+                    details: new { fileName = existingFile.Name, sizeBytes = existingFile.SizeBytes },
+                    ct: ct);
+            }
+
+            return replacedDto;
+        }
+
         var fileItem = new FileItem
         {
             Id = Guid.NewGuid(),
@@ -198,6 +370,7 @@ public class FileService : IFileService
             Extension = extension,
             MimeType = mimeType,
             SizeBytes = writeResult.SizeBytes,
+            IsShared = isShared,
             IsDeleted = false,
             IsFavorite = false,
             CreatedAt = now,
@@ -253,6 +426,7 @@ public class FileService : IFileService
             Extension = file.Extension,
             MimeType = file.MimeType,
             SizeBytes = file.SizeBytes,
+            IsShared = file.IsShared,
             IsFavorite = file.IsFavorite,
             CreatedAt = file.CreatedAt,
             UpdatedAt = file.UpdatedAt
@@ -423,6 +597,572 @@ public class FileService : IFileService
         }
     }
 
+    public async Task<IReadOnlyList<string>> CheckConflictsAsync(CheckFileConflictsRequest request, Guid userId, CancellationToken ct = default)
+    {
+        var details = await CheckConflictDetailsAsync(request, userId, ct);
+        return details.Select(d => d.FileName).ToList();
+    }
+
+    public async Task<IReadOnlyList<FileConflictDetailDto>> CheckConflictDetailsAsync(CheckFileConflictsRequest request, Guid userId, CancellationToken ct = default)
+    {
+        if (request.FileNames == null || request.FileNames.Count == 0)
+        {
+            return Array.Empty<FileConflictDetailDto>();
+        }
+
+        var isShared = request.IsShared == true;
+        if (!isShared && request.FolderId.HasValue)
+        {
+            var folder = await _dbContext.Folders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == request.FolderId.Value && !f.IsDeleted, ct);
+            if (folder != null && folder.IsShared)
+            {
+                isShared = true;
+            }
+        }
+
+        var requestedNames = request.FileNames
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var query = _dbContext.FileItems
+            .AsNoTracking()
+            .Where(f => !f.IsDeleted && f.FolderId == request.FolderId && requestedNames.Contains(f.Name));
+
+        if (isShared)
+        {
+            query = query.Where(f => f.IsShared);
+        }
+        else
+        {
+            query = query.Where(f => f.UserId == userId);
+        }
+
+        var existingFiles = await query.ToListAsync(ct);
+
+        return existingFiles.Select(f => new FileConflictDetailDto
+        {
+            FileName = f.Name,
+            ExistingFileId = f.Id,
+            SizeBytes = f.SizeBytes,
+            UpdatedAt = f.UpdatedAt,
+            IsShared = f.IsShared
+        }).ToList();
+    }
+
+    public async Task<ThumbnailResult> GetFileThumbnailAsync(Guid fileId, Guid? userId, int width = 256, int height = 256, string format = "webp", CancellationToken ct = default)
+    {
+        var file = await _dbContext.FileItems
+            .Include(f => f.StorageBlob)
+                .ThenInclude(b => b.StorageNode)
+            .FirstOrDefaultAsync(f => f.Id == fileId && !f.IsDeleted, ct)
+            ?? throw new NotFoundException($"File with ID '{fileId}' was not found.");
+
+        if (!file.IsShared)
+        {
+            var isAllowed = false;
+            if (userId.HasValue)
+            {
+                if (file.UserId == userId.Value)
+                {
+                    isAllowed = true;
+                }
+                else
+                {
+                    var user = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+                    if (user?.Role == UserRole.Admin)
+                    {
+                        isAllowed = true;
+                    }
+                }
+            }
+
+            if (!isAllowed)
+            {
+                throw new NotFoundException($"File with ID '{fileId}' was not found.");
+            }
+        }
+
+        if (_thumbnailService != null)
+        {
+            var cached = _thumbnailService.TryGetCachedThumbnail(
+                file.StorageBlob.Sha256Hash,
+                width,
+                height,
+                format,
+                file.MimeType);
+
+            if (cached != null)
+            {
+                return cached;
+            }
+        }
+
+        var driver = _driverResolver.GetDriverForNode(file.StorageBlob.StorageNode);
+        await using var readStream = await driver.OpenReadAsync(file.StorageBlob, ct);
+
+        if (_thumbnailService != null)
+        {
+            return await _thumbnailService.GetOrCreateThumbnailAsync(
+                readStream,
+                file.Name,
+                file.MimeType,
+                file.StorageBlob.Sha256Hash,
+                width,
+                height,
+                format,
+                ct);
+        }
+
+        return new ThumbnailResult
+        {
+            Stream = readStream,
+            ContentType = file.MimeType,
+            ETag = $"\"{file.StorageBlob.Sha256Hash}\""
+        };
+    }
+
+    public async Task<FileDownloadResult> GetFileStreamAsync(Guid fileId, Guid? userId, CancellationToken ct = default)
+    {
+        var file = await _dbContext.FileItems
+            .Include(f => f.StorageBlob)
+                .ThenInclude(b => b.StorageNode)
+            .FirstOrDefaultAsync(f => f.Id == fileId && !f.IsDeleted, ct)
+            ?? throw new NotFoundException($"File with ID '{fileId}' was not found.");
+
+        if (!file.IsShared)
+        {
+            var isAllowed = false;
+            if (userId.HasValue)
+            {
+                if (file.UserId == userId.Value)
+                {
+                    isAllowed = true;
+                }
+                else
+                {
+                    var user = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+                    if (user?.Role == UserRole.Admin)
+                    {
+                        isAllowed = true;
+                    }
+                }
+            }
+
+            if (!isAllowed)
+            {
+                throw new NotFoundException($"File with ID '{fileId}' was not found.");
+            }
+        }
+
+        var driver = _driverResolver.GetDriverForNode(file.StorageBlob.StorageNode);
+        var directUrl = await driver.TryGenerateDirectDownloadUrlAsync(file.StorageBlob, TimeSpan.FromMinutes(15), ct);
+        if (directUrl != null)
+        {
+            return new FileDownloadResult
+            {
+                RedirectUrl = directUrl.Url,
+                FileName = file.Name,
+                ContentType = file.MimeType,
+                SizeBytes = file.SizeBytes
+            };
+        }
+
+        var stream = await driver.OpenReadAsync(file.StorageBlob, ct);
+
+        return new FileDownloadResult
+        {
+            Stream = stream,
+            FileName = file.Name,
+            ContentType = file.MimeType,
+            SizeBytes = file.SizeBytes
+        };
+    }
+
+    public async Task<FileDownloadResult> DownloadFilesZipAsync(IEnumerable<Guid> fileIds, IEnumerable<Guid>? folderIds, Guid userId, CancellationToken ct = default)
+    {
+        var targetFileIds = new HashSet<Guid>(fileIds ?? Enumerable.Empty<Guid>());
+        var folderIdList = folderIds?.ToList() ?? new List<Guid>();
+        var rootFolderSet = new HashSet<Guid>(folderIdList);
+        var expandedFolderIds = new HashSet<Guid>();
+        var folderMap = new Dictionary<Guid, Folder>();
+
+        if (folderIdList.Count > 0)
+        {
+            var allUserFolders = await _dbContext.Folders
+                .AsNoTracking()
+                .Where(f => f.UserId == userId && !f.IsDeleted)
+                .ToListAsync(ct);
+
+            folderMap = allUserFolders.ToDictionary(f => f.Id);
+
+            foreach (var fid in folderIdList.Where(id => folderMap.ContainsKey(id)))
+            {
+                expandedFolderIds.Add(fid);
+                var descendants = GetDescendantFolderIds(fid, allUserFolders);
+                foreach (var d in descendants)
+                {
+                    expandedFolderIds.Add(d);
+                }
+            }
+
+            var filesInFolders = await _dbContext.FileItems
+                .AsNoTracking()
+                .Where(f => f.UserId == userId && !f.IsDeleted && f.FolderId != null && expandedFolderIds.Contains(f.FolderId.Value))
+                .Select(f => f.Id)
+                .ToListAsync(ct);
+
+            foreach (var fid in filesInFolders)
+            {
+                targetFileIds.Add(fid);
+            }
+        }
+
+        var files = await _dbContext.FileItems
+            .Include(f => f.StorageBlob)
+                .ThenInclude(b => b.StorageNode)
+            .Where(f => targetFileIds.Contains(f.Id) && f.UserId == userId && !f.IsDeleted)
+            .ToListAsync(ct);
+
+        if (files.Count == 0 && expandedFolderIds.Count == 0)
+        {
+            throw new NotFoundException("No files or folders found to download.");
+        }
+
+        string GetFolderPath(Guid fId)
+        {
+            var currentId = (Guid?)fId;
+            var parts = new List<string>();
+            while (currentId.HasValue && folderMap.TryGetValue(currentId.Value, out var f))
+            {
+                parts.Add(f.Name);
+                if (rootFolderSet.Contains(f.Id) || !f.ParentFolderId.HasValue)
+                {
+                    break;
+                }
+                currentId = f.ParentFolderId;
+            }
+            parts.Reverse();
+            return string.Join("/", parts);
+        }
+
+        var memoryStream = new MemoryStream();
+        using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var usedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Create directory entries for empty folders
+            foreach (var fid in expandedFolderIds)
+            {
+                var folderPath = GetFolderPath(fid) + "/";
+                if (!usedPaths.Contains(folderPath))
+                {
+                    archive.CreateEntry(folderPath);
+                    usedPaths.Add(folderPath);
+                }
+            }
+
+            foreach (var file in files)
+            {
+                string relativeEntryPath;
+                if (file.FolderId.HasValue && expandedFolderIds.Contains(file.FolderId.Value))
+                {
+                    var prefix = GetFolderPath(file.FolderId.Value);
+                    relativeEntryPath = $"{prefix}/{file.Name}";
+                }
+                else
+                {
+                    relativeEntryPath = file.Name;
+                }
+
+                if (usedPaths.Contains(relativeEntryPath))
+                {
+                    var lastSlash = relativeEntryPath.LastIndexOf('/');
+                    var dir = lastSlash >= 0 ? relativeEntryPath[..lastSlash] : string.Empty;
+                    var fileName = lastSlash >= 0 ? relativeEntryPath[(lastSlash + 1)..] : relativeEntryPath;
+                    var ext = Path.GetExtension(fileName);
+                    var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                    var counter = 1;
+
+                    while (true)
+                    {
+                        var candidateName = $"{nameWithoutExt} ({counter}){ext}";
+                        var candidatePath = string.IsNullOrEmpty(dir) ? candidateName : $"{dir}/{candidateName}";
+                        if (!usedPaths.Contains(candidatePath))
+                        {
+                            relativeEntryPath = candidatePath;
+                            break;
+                        }
+                        counter++;
+                    }
+                }
+                usedPaths.Add(relativeEntryPath);
+
+                var entry = archive.CreateEntry(relativeEntryPath, CompressionLevel.Optimal);
+                var driver = _driverResolver.GetDriverForNode(file.StorageBlob.StorageNode);
+                using var fileStream = await driver.OpenReadAsync(file.StorageBlob, ct);
+                using var entryStream = entry.Open();
+                await fileStream.CopyToAsync(entryStream, ct);
+            }
+        }
+
+        memoryStream.Position = 0;
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                action: "BulkFilesDownloadedZip",
+                resource: "Files",
+                resourceId: string.Join(",", files.Select(f => f.Id)),
+                userId: userId,
+                username: null,
+                ipAddress: null,
+                details: new { fileCount = files.Count, totalBytes = memoryStream.Length },
+                ct: ct);
+        }
+
+        return new FileDownloadResult
+        {
+            Stream = memoryStream,
+            FileName = "omega-cloud-archive.zip",
+            ContentType = "application/zip",
+            SizeBytes = memoryStream.Length
+        };
+    }
+
+    public async Task BulkDeleteAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid userId, CancellationToken ct = default)
+    {
+        var touchedFolderIds = new HashSet<Guid?>();
+
+        if (fileIds != null)
+        {
+            var files = await _dbContext.FileItems
+                .Where(f => fileIds.Contains(f.Id) && f.UserId == userId && !f.IsDeleted)
+                .ToListAsync(ct);
+
+            foreach (var file in files)
+            {
+                file.IsDeleted = true;
+                file.DeletedAt = DateTime.UtcNow;
+                file.UpdatedAt = DateTime.UtcNow;
+                touchedFolderIds.Add(file.FolderId);
+            }
+        }
+
+        if (folderIds != null)
+        {
+            var folderIdList = folderIds.ToList();
+            var allFolders = await _dbContext.Folders
+                .Where(f => f.UserId == userId && !f.IsDeleted)
+                .ToListAsync(ct);
+
+            var foldersToDelete = new HashSet<Guid>(folderIdList);
+            foreach (var fid in folderIdList)
+            {
+                var descendants = GetDescendantFolderIds(fid, allFolders);
+                foreach (var d in descendants)
+                {
+                    foldersToDelete.Add(d);
+                }
+            }
+
+            foreach (var f in allFolders.Where(f => foldersToDelete.Contains(f.Id)))
+            {
+                f.IsDeleted = true;
+                f.DeletedAt = DateTime.UtcNow;
+                f.UpdatedAt = DateTime.UtcNow;
+                touchedFolderIds.Add(f.ParentFolderId);
+            }
+
+            var nestedFiles = await _dbContext.FileItems
+                .Where(f => f.UserId == userId && !f.IsDeleted && f.FolderId != null && foldersToDelete.Contains(f.FolderId.Value))
+                .ToListAsync(ct);
+
+            foreach (var nf in nestedFiles)
+            {
+                nf.IsDeleted = true;
+                nf.DeletedAt = DateTime.UtcNow;
+                nf.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        foreach (var parentId in touchedFolderIds)
+        {
+            await _notifier.NotifyDirectoryChangedAsync(userId, parentId, "BulkDeleted", null, ct);
+        }
+    }
+
+    public async Task BulkMoveAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetFolderId, Guid userId, CancellationToken ct = default)
+    {
+        if (targetFolderId.HasValue)
+        {
+            var destFolderExists = await _dbContext.Folders
+                .AnyAsync(f => f.Id == targetFolderId.Value && f.UserId == userId && !f.IsDeleted, ct);
+            if (!destFolderExists)
+            {
+                throw new NotFoundException($"Destination folder with ID '{targetFolderId.Value}' was not found.");
+            }
+        }
+
+        var touchedFolderIds = new HashSet<Guid?> { targetFolderId };
+
+        if (fileIds != null)
+        {
+            var files = await _dbContext.FileItems
+                .Where(f => fileIds.Contains(f.Id) && f.UserId == userId && !f.IsDeleted)
+                .ToListAsync(ct);
+
+            foreach (var file in files)
+            {
+                if (file.FolderId != targetFolderId)
+                {
+                    var isDuplicate = await _dbContext.FileItems
+                        .AnyAsync(f => f.UserId == userId && f.FolderId == targetFolderId && f.Name == file.Name && f.Id != file.Id && !f.IsDeleted, ct);
+                    if (!isDuplicate)
+                    {
+                        touchedFolderIds.Add(file.FolderId);
+                        file.FolderId = targetFolderId;
+                        file.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+            }
+        }
+
+        if (folderIds != null)
+        {
+            var allFolders = await _dbContext.Folders
+                .Where(f => f.UserId == userId && !f.IsDeleted)
+                .ToListAsync(ct);
+
+            var foldersToMove = allFolders.Where(f => folderIds.Contains(f.Id)).ToList();
+
+            foreach (var folder in foldersToMove)
+            {
+                if (folder.ParentFolderId == targetFolderId) continue;
+
+                if (targetFolderId.HasValue)
+                {
+                    if (folder.Id == targetFolderId.Value)
+                    {
+                        throw new ValidationException("A folder cannot be moved into itself.");
+                    }
+                    var descendants = GetDescendantFolderIds(folder.Id, allFolders);
+                    if (descendants.Contains(targetFolderId.Value))
+                    {
+                        throw new ValidationException("A folder cannot be moved into one of its own subfolders.");
+                    }
+                }
+
+                var isDuplicate = await _dbContext.Folders
+                    .AnyAsync(f => f.UserId == userId && f.ParentFolderId == targetFolderId && f.Name == folder.Name && f.Id != folder.Id && !f.IsDeleted, ct);
+                if (!isDuplicate)
+                {
+                    touchedFolderIds.Add(folder.ParentFolderId);
+                    folder.ParentFolderId = targetFolderId;
+                    folder.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        foreach (var fid in touchedFolderIds)
+        {
+            await _notifier.NotifyDirectoryChangedAsync(userId, fid, "BulkMoved", null, ct);
+        }
+    }
+
+    public async Task<IReadOnlyList<FileItemDto>> GetRecentFilesAsync(Guid userId, int limit = 10, CancellationToken ct = default)
+    {
+        var files = await _dbContext.FileItems
+            .AsNoTracking()
+            .Where(f => f.UserId == userId && !f.IsDeleted)
+            .OrderByDescending(f => f.UpdatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        return files.Select(MapToFileDto).ToList();
+    }
+
+    public async Task<OmegaCloud.Application.DTOs.Folders.FolderContentDto> SearchAsync(string query, Guid? folderId, string scope, Guid userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return new OmegaCloud.Application.DTOs.Folders.FolderContentDto();
+        }
+
+        query = query.Trim().ToLower();
+        var allFolders = await _dbContext.Folders
+            .AsNoTracking()
+            .Where(f => f.UserId == userId && !f.IsDeleted)
+            .ToListAsync(ct);
+
+        List<Guid>? allowedFolderIds = null;
+        if (scope.Equals("current", StringComparison.OrdinalIgnoreCase) && folderId.HasValue)
+        {
+            allowedFolderIds = GetDescendantFolderIds(folderId.Value, allFolders);
+            allowedFolderIds.Add(folderId.Value);
+        }
+
+        var matchingFolders = allFolders
+            .Where(f => f.Name.ToLower().Contains(query) && (allowedFolderIds == null || allowedFolderIds.Contains(f.Id)))
+            .Select(f => new OmegaCloud.Application.DTOs.Folders.FolderDto
+            {
+                Id = f.Id,
+                UserId = f.UserId,
+                ParentFolderId = f.ParentFolderId,
+                Name = f.Name,
+                Color = f.Color,
+                IsShared = f.IsShared,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt
+            })
+            .ToList();
+
+        var filesQuery = _dbContext.FileItems
+            .AsNoTracking()
+            .Where(f => f.UserId == userId && !f.IsDeleted && f.Name.ToLower().Contains(query));
+
+        if (allowedFolderIds != null)
+        {
+            filesQuery = filesQuery.Where(f => f.FolderId.HasValue && allowedFolderIds.Contains(f.FolderId.Value));
+        }
+
+        var matchingFiles = await filesQuery
+            .OrderByDescending(f => f.UpdatedAt)
+            .Take(100)
+            .ToListAsync(ct);
+
+        return new OmegaCloud.Application.DTOs.Folders.FolderContentDto
+        {
+            Folders = matchingFolders,
+            Files = matchingFiles.Select(MapToFileDto).ToList()
+        };
+    }
+
+    private static List<Guid> GetDescendantFolderIds(Guid folderId, List<Folder> allFolders)
+    {
+        var result = new List<Guid>();
+        var queue = new Queue<Guid>();
+        queue.Enqueue(folderId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var children = allFolders.Where(f => f.ParentFolderId == current).Select(f => f.Id);
+            foreach (var childId in children)
+            {
+                result.Add(childId);
+                queue.Enqueue(childId);
+            }
+        }
+
+        return result;
+    }
+
     private static string ValidateFileName(string? name) => FileHelper.ValidateFileName(name);
 
     private static string GetMimeType(string fileName) => FileHelper.GetMimeType(fileName);
@@ -437,6 +1177,7 @@ public class FileService : IFileService
         Extension = f.Extension,
         MimeType = f.MimeType,
         SizeBytes = f.SizeBytes,
+        IsShared = f.IsShared,
         IsDeleted = f.IsDeleted,
         DeletedAt = f.DeletedAt,
         IsFavorite = f.IsFavorite,

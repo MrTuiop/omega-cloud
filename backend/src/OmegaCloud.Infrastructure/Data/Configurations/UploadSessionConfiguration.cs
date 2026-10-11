@@ -41,6 +41,14 @@ public class UploadSessionConfiguration : IEntityTypeConfiguration<UploadSession
             .HasMaxLength(32)
             .IsRequired();
 
+        builder.Property(s => s.ConflictResolution)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .HasDefaultValue(OmegaCloud.Domain.Enums.ConflictResolutionStrategy.None);
+
+        builder.Property(s => s.IsShared)
+            .HasDefaultValue(false);
+
         builder.Property(s => s.TempStoragePath)
             .HasMaxLength(512)
             .IsRequired();

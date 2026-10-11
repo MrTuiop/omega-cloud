@@ -90,8 +90,9 @@ public class DatabaseSeeder
             BaseUrl = null,
             IsBehindNat = false,
             Status = StorageNodeStatus.Online,
-            TotalSpaceBytes = 1_099_511_627_776L, // 1 TB default
-            AvailableSpaceBytes = 1_099_511_627_776L,
+            TotalSpaceBytes = 10_995_116_277_760L, // 10 TB default
+            AvailableSpaceBytes = 10_995_116_277_760L,
+            MaxCapacityBytes = 10_995_116_277_760L,
             LastHeartbeatAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         };

@@ -12,5 +12,6 @@ public class AdminUserDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastActiveAt { get; set; }
     public int ActiveSessionsCount { get; set; }
 }

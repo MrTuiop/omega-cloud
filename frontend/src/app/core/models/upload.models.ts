@@ -27,6 +27,8 @@ export interface InitUploadSessionRequest {
   folderId?: string;
   targetFolderId?: string;
   storageNodeId?: string;
+  conflictResolution?: 'Replace' | 'Rename' | 'Skip';
+  isShared?: boolean;
 }
 
 export interface CompleteUploadSessionRequest {
@@ -70,4 +72,6 @@ export interface UploadTask {
   totalChunks: number;
   startTime: number;
   abortController?: AbortController;
+  conflictResolution?: 'Replace' | 'Rename' | 'Skip';
+  isShared?: boolean;
 }

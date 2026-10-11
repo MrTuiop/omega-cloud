@@ -114,19 +114,60 @@ export class ApiService {
     });
   }
 
+  downloadZip(fileIds: string[], folderIds?: string[]): Observable<Blob> {
+    return this.http.post(`${this.baseUrl}/files/download-zip`, { fileIds, folderIds }, {
+      responseType: 'blob'
+    });
+  }
+
+  bulkDelete(fileIds?: string[], folderIds?: string[]): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/files/bulk-delete`, { fileIds, folderIds });
+  }
+
+  bulkMove(fileIds?: string[], folderIds?: string[], targetFolderId?: string | null): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/files/bulk-move`, {
+      fileIds,
+      folderIds,
+      targetFolderId: targetFolderId || null
+    });
+  }
+
   getDownloadUrl(fileId: string): string {
     return `${this.baseUrl}/files/${fileId}/download`;
   }
 
+  getRecentFiles(limit: number = 10): Observable<FileItem[]> {
+    const params = new HttpParams().set('limit', limit.toString());
+    return this.http.get<FileItem[]>(`${this.baseUrl}/files/recent`, { params });
+  }
+
+  searchFiles(query: string, folderId?: string | null, scope: 'everywhere' | 'current' = 'everywhere'): Observable<FolderContent> {
+    let params = new HttpParams()
+      .set('q', query)
+      .set('scope', scope);
+    if (folderId) {
+      params = params.set('folderId', folderId);
+    }
+    return this.http.get<FolderContent>(`${this.baseUrl}/files/search`, { params });
+  }
+
   // ================= Direct Stream Upload (< 50MB) =================
-  directStreamUpload(file: File, folderId?: string | null): Observable<HttpEvent<FileItem>> {
+  directStreamUpload(file: File, folderId?: string | null, conflictResolution?: string): Observable<HttpEvent<FileItem>> {
     const formData = new FormData();
     formData.append('file', file, file.name);
     if (folderId) {
       formData.append('folderId', folderId);
     }
+    if (conflictResolution) {
+      formData.append('conflictResolution', conflictResolution);
+    }
 
-    const req = new HttpRequest('POST', `${this.baseUrl}/upload/direct-stream`, formData, {
+    let url = `${this.baseUrl}/upload/direct-stream`;
+    if (conflictResolution) {
+      url += `?conflictResolution=${encodeURIComponent(conflictResolution)}`;
+    }
+
+    const req = new HttpRequest('POST', url, formData, {
       reportProgress: true
     });
     return this.http.request<FileItem>(req);
@@ -271,5 +312,90 @@ export class ApiService {
   // ================= Admin System Health =================
   getSystemHealth(): Observable<SystemHealth> {
     return this.http.get<SystemHealth>(`${this.baseUrl}/admin/health`);
+  }
+
+  // ================= Shared Space =================
+  getSharedFolders(folderId?: string | null): Observable<FolderContent> {
+    let params = new HttpParams();
+    if (folderId) {
+      params = params.set('folderId', folderId);
+    }
+    return this.http.get<FolderContent>(`${this.baseUrl}/shared/folders`, { params });
+  }
+
+  getSharedFolder(id: string): Observable<FolderContent> {
+    return this.http.get<FolderContent>(`${this.baseUrl}/shared/folders/${id}`);
+  }
+
+  getSharedFileMetadata(id: string): Observable<FileMetadata> {
+    return this.http.get<FileMetadata>(`${this.baseUrl}/shared/files/${id}/metadata`);
+  }
+
+  downloadSharedFileBlob(id: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/shared/files/${id}/download`, {
+      responseType: 'blob'
+    });
+  }
+
+  getSharedDownloadUrl(id: string): string {
+    return `${this.baseUrl}/shared/files/${id}/download`;
+  }
+
+  getSharedFileThumbnailUrl(id: string, width = 256, height = 256): string {
+    return `${this.baseUrl}/shared/files/${id}/thumbnail?width=${width}&height=${height}`;
+  }
+
+  uploadSharedFile(file: File, folderId?: string | null, conflictResolution?: string): Observable<HttpEvent<FileItem>> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    if (folderId) {
+      formData.append('folderId', folderId);
+    }
+    if (conflictResolution) {
+      formData.append('conflictResolution', conflictResolution);
+    }
+
+    let url = `${this.baseUrl}/shared/upload`;
+    if (conflictResolution) {
+      url += `?conflictResolution=${encodeURIComponent(conflictResolution)}`;
+    }
+
+    const req = new HttpRequest('POST', url, formData, {
+      reportProgress: true
+    });
+    return this.http.request<FileItem>(req);
+  }
+
+  createSharedFolder(name: string, parentFolderId?: string | null): Observable<FolderItem> {
+    return this.http.post<FolderItem>(`${this.baseUrl}/shared/folders`, {
+      name,
+      parentFolderId: parentFolderId ?? null,
+      isShared: true
+    });
+  }
+
+  deleteSharedFile(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/shared/files/${id}`);
+  }
+
+  deleteSharedFolder(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/shared/folders/${id}`);
+  }
+
+  // ================= Conflicts =================
+  checkConflicts(fileNames: string[], folderId?: string | null, isShared?: boolean): Observable<string[]> {
+    return this.http.post<string[]>(`${this.baseUrl}/files/check-conflicts`, {
+      fileNames,
+      folderId: folderId ?? null,
+      isShared: isShared ?? false
+    });
+  }
+
+  checkConflictDetails(fileNames: string[], folderId?: string | null, isShared?: boolean): Observable<any[]> {
+    return this.http.post<any[]>(`${this.baseUrl}/files/check-conflicts?details=true`, {
+      fileNames,
+      folderId: folderId ?? null,
+      isShared: isShared ?? false
+    });
   }
 }
