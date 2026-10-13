@@ -144,5 +144,61 @@ describe('FileListComponent', () => {
 
     expect(component.dragOverFolderId).toBeNull();
   });
+
+  it('should toggle all items with master checkbox in the table header', () => {
+    component.folders = [
+      { id: 'f-1', userId: 'u-1', name: 'Work', color: null, isDeleted: false, isShared: false, createdAt: '', updatedAt: '' }
+    ];
+    component.files = [
+      { id: 'file-1', userId: 'u-1', storageBlobId: 'b-1', name: 'notes.txt', extension: 'txt', mimeType: 'text/plain', sizeBytes: 200, isDeleted: false, isFavorite: false, isShared: false, createdAt: '', updatedAt: '' }
+    ];
+    fixture.detectChanges();
+
+    spyOn(component.selectionChange, 'emit');
+
+    const masterCheckbox: HTMLInputElement = fixture.nativeElement.querySelector('thead .glass-checkbox');
+    masterCheckbox.checked = true;
+    masterCheckbox.dispatchEvent(new Event('change'));
+
+    expect(component.selectedFolderIds).toEqual(['f-1']);
+    expect(component.selectedFileIds).toEqual(['file-1']);
+    expect(component.isAllSelected()).toBeTrue();
+    expect(component.selectionChange.emit).toHaveBeenCalledWith({
+      folderIds: ['f-1'],
+      fileIds: ['file-1']
+    });
+
+    // Uncheck
+    masterCheckbox.checked = false;
+    masterCheckbox.dispatchEvent(new Event('change'));
+    expect(component.selectedFolderIds).toEqual([]);
+    expect(component.selectedFileIds).toEqual([]);
+    expect(component.isAllSelected()).toBeFalse();
+  });
+
+  it('should toggle single item on row checkbox change without unselecting others', () => {
+    component.folders = [
+      { id: 'f-1', userId: 'u-1', name: 'Work', color: null, isDeleted: false, isShared: false, createdAt: '', updatedAt: '' }
+    ];
+    component.files = [
+      { id: 'file-1', userId: 'u-1', storageBlobId: 'b-1', name: 'notes.txt', extension: 'txt', mimeType: 'text/plain', sizeBytes: 200, isDeleted: false, isFavorite: false, isShared: false, createdAt: '', updatedAt: '' }
+    ];
+    component.selectedFolderIds = ['f-1'];
+    fixture.detectChanges();
+
+    spyOn(component.selectionChange, 'emit');
+
+    const fileCheckbox: HTMLInputElement = fixture.nativeElement.querySelector('.file-row .glass-checkbox');
+    fileCheckbox.checked = true;
+    fileCheckbox.dispatchEvent(new Event('change'));
+
+    expect(component.selectedFolderIds).toEqual(['f-1']);
+    expect(component.selectedFileIds).toEqual(['file-1']);
+
+    fileCheckbox.checked = false;
+    fileCheckbox.dispatchEvent(new Event('change'));
+    expect(component.selectedFolderIds).toEqual(['f-1']);
+    expect(component.selectedFileIds).toEqual([]);
+  });
 });
 

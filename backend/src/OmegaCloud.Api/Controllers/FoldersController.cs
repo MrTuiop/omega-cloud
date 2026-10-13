@@ -33,6 +33,16 @@ public class FoldersController : ControllerBase
         return Ok(content);
     }
 
+    [HttpGet("tree")]
+    [ProducesResponseType(typeof(FolderTreeResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<FolderTreeResponseDto>> GetFolderTree(CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var tree = await _folderService.GetFolderTreeAsync(userId, ct);
+        return Ok(tree);
+    }
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(FolderContentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

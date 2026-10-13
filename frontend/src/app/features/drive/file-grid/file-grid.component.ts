@@ -4,6 +4,7 @@ import { FolderItem, FileItem } from '../../../core/models/file.models';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { getFileTypeInfo } from '../../../shared/utils/file-icons';
+import { DragStateService } from '../../../core/services/drag-state.service';
 
 @Component({
   selector: 'app-file-grid',
@@ -13,6 +14,7 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
     <div
       #gridContainer
       class="grid-container"
+      [class.grid-container--dragging]="dragState.isDragging()"
       (mousedown)="onContainerMouseDown($event)"
       (contextmenu)="onContainerContextMenu($event)"
     >
@@ -38,16 +40,29 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
               [attr.data-type]="'folder'"
               [class.folder-card--selected]="isFolderSelected(folder.id)"
               [class.folder-card--dragover]="dragOverFolderId === folder.id"
-              [draggable]="!isTouchDevice"
+              [draggable]="true"
               (click)="onFolderClick($event, folder)"
               (dblclick)="openFolder.emit(folder)"
               (contextmenu)="onFolderContextMenu($event, folder)"
               (dragstart)="onFolderDragStart($event, folder)"
               (dragover)="onFolderDragOver($event, folder)"
-              (dragleave)="onFolderDragLeave(folder)"
+              (dragleave)="onFolderDragLeave($event, folder)"
               (drop)="onFolderDrop($event, folder)"
-              (touchstart)="onTouchStart()"
             >
+              <!-- Checkbox for multi-selection -->
+              <div
+                class="item-checkbox"
+                [class.item-checkbox--checked]="isFolderSelected(folder.id)"
+                (click)="onCheckboxClick($event, 'folder', folder.id)"
+                title="Select folder"
+              >
+                @if (isFolderSelected(folder.id)) {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                }
+              </div>
+
               <div class="folder-icon" [style.color]="folder.color || 'var(--omega-accent)'">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
@@ -72,13 +87,26 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
               [attr.data-id]="file.id"
               [attr.data-type]="'file'"
               [class.file-card--selected]="isFileSelected(file.id)"
-              [draggable]="!isTouchDevice"
+              [draggable]="true"
               (click)="onFileClick($event, file)"
               (dblclick)="onFileDoubleClick(file)"
               (contextmenu)="onFileContextMenu($event, file)"
               (dragstart)="onFileDragStart($event, file)"
-              (touchstart)="onTouchStart()"
             >
+              <!-- Checkbox for multi-selection -->
+              <div
+                class="item-checkbox"
+                [class.item-checkbox--checked]="isFileSelected(file.id)"
+                (click)="onCheckboxClick($event, 'file', file.id)"
+                title="Select file"
+              >
+                @if (isFileSelected(file.id)) {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                }
+              </div>
+
               <button
                 class="star-btn"
                 [class.star-btn--active]="file.isFavorite"
@@ -134,6 +162,13 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
       user-select: none;
       -webkit-user-select: none;
       min-height: 100%;
+
+      &--dragging {
+        .folder-card *,
+        .file-card * {
+          pointer-events: none !important;
+        }
+      }
     }
 
     .marquee-box {
@@ -164,10 +199,43 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
       gap: 12px;
     }
 
+    .item-checkbox {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1.5px solid var(--omega-glass-border, rgba(255, 255, 255, 0.4));
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      opacity: 0;
+      transition: all 0.2s var(--omega-ease-smooth);
+      pointer-events: auto;
+
+      &:hover {
+        opacity: 1 !important;
+        transform: scale(1.1);
+        border-color: var(--omega-accent);
+      }
+
+      &--checked {
+        opacity: 1 !important;
+        background: var(--omega-accent);
+        border-color: var(--omega-accent);
+        color: #ffffff;
+      }
+    }
+
     .folder-card {
       @include glass-surface;
       border-radius: var(--omega-radius-md);
-      padding: 12px 14px;
+      padding: 12px 14px 12px 34px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -179,12 +247,20 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
         background: var(--omega-glass-bg-hover);
         transform: translateY(-2px);
         box-shadow: var(--omega-shadow-md), var(--omega-glass-highlight);
+
+        .item-checkbox {
+          opacity: 0.6;
+        }
       }
 
       &--selected {
         border-color: var(--omega-accent) !important;
         box-shadow: 0 0 0 2px var(--omega-accent), var(--omega-shadow-sm) !important;
         background: var(--omega-accent-subtle) !important;
+
+        .item-checkbox {
+          opacity: 1 !important;
+        }
       }
 
       &--dragover {
@@ -192,6 +268,11 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
         background: var(--omega-accent-subtle) !important;
         transform: scale(1.03) !important;
         box-shadow: 0 0 24px rgba(0, 113, 227, 0.55), 0 0 0 2px var(--omega-accent) !important;
+
+        .folder-icon,
+        .folder-info {
+          pointer-events: none !important;
+        }
       }
     }
 
@@ -218,34 +299,39 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
     }
 
     .folder-date {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--omega-text-muted);
     }
 
     .files-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 14px;
+      gap: 16px;
     }
 
     .file-card {
       @include glass-surface;
       border-radius: var(--omega-radius-lg);
-      padding: 14px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
-      height: 170px;
+      gap: 12px;
       cursor: pointer;
+      transition: all 0.2s var(--omega-ease-spring);
       position: relative;
-      transition: all 0.25s var(--omega-ease-spring);
+      background: var(--omega-glass-bg);
 
       &:hover {
         background: var(--omega-glass-bg-hover);
-        transform: translateY(-3px);
-        box-shadow: var(--omega-shadow-lg), var(--omega-glass-highlight);
+        transform: translateY(-2px);
+        box-shadow: var(--omega-shadow-md), var(--omega-glass-highlight);
 
         .star-btn {
           opacity: 1;
+        }
+
+        .item-checkbox {
+          opacity: 0.6;
         }
       }
 
@@ -253,48 +339,59 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
         border-color: var(--omega-accent) !important;
         box-shadow: 0 0 0 2px var(--omega-accent), var(--omega-shadow-sm) !important;
         background: var(--omega-accent-subtle) !important;
+
+        .item-checkbox {
+          opacity: 1 !important;
+        }
       }
     }
 
     .star-btn {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: var(--omega-glass-bg-sunken);
+      top: 8px;
+      right: 8px;
+      background: transparent;
+      border: none;
       color: var(--omega-text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       opacity: 0;
-      transition: all 0.15s ease;
-      z-index: 2;
+      transition: all 0.2s;
+      z-index: 10;
+      pointer-events: auto;
+
+      &:hover {
+        color: #ffcc00;
+        transform: scale(1.15);
+      }
 
       &--active {
         opacity: 1;
         color: #ffcc00;
       }
-
-      &:hover {
-        transform: scale(1.15);
-        color: #ffcc00;
-      }
     }
 
     .file-preview {
-      flex: 1;
+      height: 110px;
+      border-radius: var(--omega-radius-md);
+      background: rgba(0, 0, 0, 0.03);
       display: flex;
       align-items: center;
       justify-content: center;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--omega-glass-border-subtle);
     }
 
     .file-badge {
-      padding: 6px 14px;
-      border-radius: var(--omega-radius-md);
+      padding: 6px 12px;
+      border-radius: 6px;
       color: #ffffff;
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.05em;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -383,6 +480,8 @@ export class FileGridComponent {
   @Output() workspaceContextMenu = new EventEmitter<MouseEvent>();
   @Output() emptySpaceClick = new EventEmitter<MouseEvent>();
 
+  readonly dragState = inject(DragStateService);
+
   dragOverFolderId: string | null = null;
   isTouchDevice = false;
 
@@ -415,8 +514,34 @@ export class FileGridComponent {
     return getFileTypeInfo(file.extension, file.mimeType).color;
   }
 
-  onTouchStart(): void {
-    this.isTouchDevice = true;
+  onCheckboxClick(event: MouseEvent, type: 'folder' | 'file', id: string): void {
+    event.stopPropagation();
+    let nextFolderIds = this.selectedFolderIds.length > 0
+      ? [...this.selectedFolderIds]
+      : (this.selectedFolderId ? [this.selectedFolderId] : []);
+    let nextFileIds = this.selectedFileIds.length > 0
+      ? [...this.selectedFileIds]
+      : (this.selectedFileId ? [this.selectedFileId] : []);
+
+    if (type === 'folder') {
+      nextFolderIds = nextFolderIds.includes(id)
+        ? nextFolderIds.filter(fId => fId !== id)
+        : [...nextFolderIds, id];
+    } else {
+      nextFileIds = nextFileIds.includes(id)
+        ? nextFileIds.filter(fId => fId !== id)
+        : [...nextFileIds, id];
+    }
+
+    this.selectedFolderIds = nextFolderIds;
+    this.selectedFileIds = nextFileIds;
+    this.selectedFolderId = nextFolderIds.length === 1 && nextFileIds.length === 0 ? nextFolderIds[0] : null;
+    this.selectedFileId = nextFileIds.length === 1 && nextFolderIds.length === 0 ? nextFileIds[0] : null;
+
+    this.selectionChange.emit({
+      folderIds: nextFolderIds,
+      fileIds: nextFileIds
+    });
   }
 
   onFolderClick(event: MouseEvent, folder: FolderItem): void {
@@ -471,7 +596,6 @@ export class FileGridComponent {
         this.lastPivot = { type, id };
       }
     } else {
-      // Normal single selection
       nextFolderIds = type === 'folder' ? [id] : [];
       nextFileIds = type === 'file' ? [id] : [];
       this.lastPivot = { type, id };
@@ -636,6 +760,12 @@ export class FileGridComponent {
     }
   }
 
+  @HostListener('document:dragend')
+  onDocumentDragEnd(): void {
+    this.dragState.endDrag();
+    this.dragOverFolderId = null;
+  }
+
   // Drag and Drop
   onFolderDragStart(event: DragEvent, folder: FolderItem): void {
     if (!this.isFolderSelected(folder.id)) {
@@ -643,6 +773,10 @@ export class FileGridComponent {
       this.selectedFileIds = [];
       this.selectionChange.emit({ folderIds: [folder.id], fileIds: [] });
     }
+    this.dragState.startDrag({
+      folderIds: this.selectedFolderIds,
+      fileIds: this.selectedFileIds
+    });
     if (event.dataTransfer) {
       event.dataTransfer.setData('application/json', JSON.stringify({
         folderIds: this.selectedFolderIds,
@@ -659,6 +793,11 @@ export class FileGridComponent {
       this.selectedFolderIds = [];
       this.selectionChange.emit({ folderIds: [], fileIds: [file.id] });
     }
+    this.dragState.startDrag({
+      folderIds: this.selectedFolderIds,
+      fileIds: this.selectedFileIds,
+      fileId: file.id
+    });
     if (event.dataTransfer) {
       event.dataTransfer.setData('application/json', JSON.stringify({
         folderIds: this.selectedFolderIds,
@@ -670,20 +809,29 @@ export class FileGridComponent {
   }
 
   onFolderDragOver(event: DragEvent, folder: FolderItem): void {
-    if (this.selectedFolderIds.includes(folder.id)) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dragData = this.dragState.getDragData();
+    const currentFolderIds = dragData?.folderIds || this.selectedFolderIds;
+    if (currentFolderIds.includes(folder.id)) {
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = 'none';
       }
       return;
     }
-    event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
     }
     this.dragOverFolderId = folder.id;
   }
 
-  onFolderDragLeave(folder: FolderItem): void {
+  onFolderDragLeave(event: DragEvent, folder: FolderItem): void {
+    const currentTarget = event.currentTarget as HTMLElement;
+    const relatedTarget = event.relatedTarget as HTMLElement;
+    if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+      return;
+    }
     if (this.dragOverFolderId === folder.id) {
       this.dragOverFolderId = null;
     }
@@ -691,28 +839,42 @@ export class FileGridComponent {
 
   onFolderDrop(event: DragEvent, targetFolder: FolderItem): void {
     event.preventDefault();
+    event.stopPropagation();
     this.dragOverFolderId = null;
-    if (this.selectedFolderIds.includes(targetFolder.id)) {
-      return;
-    }
-    if (event.dataTransfer) {
+
+    const dragData = this.dragState.getDragData();
+    let folderIds: string[] = dragData?.folderIds ? [...dragData.folderIds] : [];
+    let fileIds: string[] = dragData?.fileIds ? [...dragData.fileIds] : [];
+    let fileId: string | undefined = dragData?.fileId || undefined;
+
+    if (event.dataTransfer && folderIds.length === 0 && fileIds.length === 0 && !fileId) {
       const dataStr = event.dataTransfer.getData('application/json');
       if (dataStr) {
         try {
           const data = JSON.parse(dataStr);
-          if (data.folderIds && data.folderIds.includes(targetFolder.id)) {
-            return;
-          }
-          this.folderDrop.emit({
-            targetFolder,
-            fileId: data.fileId || (data.fileIds && data.fileIds.length > 0 ? data.fileIds[0] : undefined),
-            fileIds: data.fileIds || (data.fileId ? [data.fileId] : []),
-            folderIds: data.folderIds || []
-          });
+          folderIds = data.folderIds || [];
+          fileIds = data.fileIds || (data.fileId ? [data.fileId] : []);
+          fileId = data.fileId || (fileIds.length > 0 ? fileIds[0] : undefined);
         } catch {
           // Ignore
         }
       }
     }
+
+    if (folderIds.includes(targetFolder.id)) {
+      this.dragState.endDrag();
+      return;
+    }
+
+    if (folderIds.length > 0 || fileIds.length > 0 || fileId) {
+      this.folderDrop.emit({
+        targetFolder,
+        fileId: fileId || (fileIds.length > 0 ? fileIds[0] : undefined),
+        fileIds: fileIds.length > 0 ? fileIds : (fileId ? [fileId] : []),
+        folderIds
+      });
+    }
+
+    this.dragState.endDrag();
   }
 }

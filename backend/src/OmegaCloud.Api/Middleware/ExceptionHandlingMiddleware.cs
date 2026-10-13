@@ -83,7 +83,11 @@ public class ExceptionHandlingMiddleware
             statusCode = (int)statusCode,
             error = message,
             errors
-        }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        }, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
 
         await response.WriteAsync(result);
     }

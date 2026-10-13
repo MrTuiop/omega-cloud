@@ -6,6 +6,7 @@ import { GlassCardComponent } from '../../../shared/components/glass-card/glass-
 import { GlassButtonComponent } from '../../../shared/components/glass-button/glass-button.component';
 import { ProgressRingComponent } from '../../../shared/components/progress-ring/progress-ring.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-system-health',
@@ -15,15 +16,17 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
     GlassCardComponent,
     GlassButtonComponent,
     ProgressRingComponent,
-    FileSizePipe
+    FileSizePipe,
+    TranslatePipe
   ],
   template: `
     <div class="page-container anim-fade-in">
       <!-- Header -->
+      <!-- Header -->
       <div class="page-header">
         <div class="header-titles">
-          <h1 class="page-title">Master Server Health & Telemetry</h1>
-          <p class="page-subtitle">Real-time hardware telemetry, memory pressure, database connectivity & platform state.</p>
+          <h1 class="page-title">{{ 'admin.health.title' | translate }}</h1>
+          <p class="page-subtitle">{{ 'admin.health.subtitle' | translate }}</p>
         </div>
         <div class="header-actions">
           <button
@@ -32,13 +35,13 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
             (click)="toggleAutoRefresh()"
           >
             <span class="refresh-indicator" [class.refresh-indicator--live]="autoRefresh()"></span>
-            {{ autoRefresh() ? 'Live (5s)' : 'Paused' }}
+            {{ autoRefresh() ? ('admin.health.live' | translate) : ('admin.health.paused' | translate) }}
           </button>
           <app-glass-button variant="secondary" size="md" (btnClick)="loadHealth()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            Refresh
+            {{ 'admin.health.refresh' | translate }}
           </app-glass-button>
         </div>
       </div>
@@ -46,7 +49,7 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
       @if (isLoading() && !health()) {
         <div class="loading-state">
           <div class="loading-spinner"></div>
-          <span>Sampling server telemetry...</span>
+          <span>{{ 'admin.health.sampling' | translate }}</span>
         </div>
       } @else if (health()) {
         <!-- Main Telemetry Gauges Grid -->
@@ -71,12 +74,12 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                     </svg>
                   </div>
                   <div>
-                    <h3 class="gauge-name">CPU Load</h3>
-                    <span class="gauge-desc">Master process processor load</span>
+                    <h3 class="gauge-name">{{ 'admin.health.cpuLoad' | translate }}</h3>
+                    <span class="gauge-desc">{{ 'admin.health.cpuDesc' | translate }}</span>
                   </div>
                 </div>
                 <span class="gauge-badge" [class.gauge-badge--warn]="health()!.cpuLoadPercentage > 75">
-                  {{ health()!.cpuLoadPercentage > 75 ? 'Heavy Load' : 'Normal' }}
+                  {{ health()!.cpuLoadPercentage > 75 ? ('admin.health.heavyLoad' | translate) : ('admin.health.normal' | translate) }}
                 </span>
               </div>
 
@@ -91,12 +94,12 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                 ></app-progress-ring>
                 <div class="gauge-stats">
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">Utilization</span>
+                    <span class="g-stat-lbl">{{ 'admin.health.utilization' | translate }}</span>
                     <span class="g-stat-val">{{ health()!.cpuLoadPercentage }}%</span>
                   </div>
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">Status</span>
-                    <span class="g-stat-val val-green">Optimized</span>
+                    <span class="g-stat-lbl">{{ 'admin.health.status' | translate }}</span>
+                    <span class="g-stat-val val-green">{{ 'admin.health.optimized' | translate }}</span>
                   </div>
                 </div>
               </div>
@@ -116,12 +119,12 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                     </svg>
                   </div>
                   <div>
-                    <h3 class="gauge-name">RAM Working Set</h3>
-                    <span class="gauge-desc">Process memory utilization</span>
+                    <h3 class="gauge-name">{{ 'admin.health.ramWorkingSet' | translate }}</h3>
+                    <span class="gauge-desc">{{ 'admin.health.ramDesc' | translate }}</span>
                   </div>
                 </div>
                 <span class="gauge-badge" [class.gauge-badge--warn]="health()!.memoryUsagePercentage > 85">
-                  {{ health()!.memoryUsagePercentage > 85 ? 'High Usage' : 'Healthy' }}
+                  {{ health()!.memoryUsagePercentage > 85 ? ('admin.health.highUsage' | translate) : ('admin.health.healthy' | translate) }}
                 </span>
               </div>
 
@@ -136,11 +139,11 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                 ></app-progress-ring>
                 <div class="gauge-stats">
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">Working Set</span>
+                    <span class="g-stat-lbl">{{ 'admin.health.workingSet' | translate }}</span>
                     <span class="g-stat-val">{{ health()!.usedMemoryBytes | fileSize }}</span>
                   </div>
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">Total Available</span>
+                    <span class="g-stat-lbl">{{ 'storage.available' | translate }}</span>
                     <span class="g-stat-val">{{ health()!.totalMemoryBytes | fileSize }}</span>
                   </div>
                 </div>
@@ -161,7 +164,7 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                     </svg>
                   </div>
                   <div>
-                    <h3 class="gauge-name">Local Storage Pool</h3>
+                    <h3 class="gauge-name">{{ 'admin.nodes.totalCapacity' | translate }}</h3>
                     <span class="gauge-desc">Master disk storage partition</span>
                   </div>
                 </div>
@@ -181,11 +184,11 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                 ></app-progress-ring>
                 <div class="gauge-stats">
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">Used Space</span>
+                    <span class="g-stat-lbl">{{ 'storage.used' | translate }}</span>
                     <span class="g-stat-val">{{ health()!.storageUsedBytes | fileSize }}</span>
                   </div>
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">Free Space</span>
+                    <span class="g-stat-lbl">{{ 'storage.available' | translate }}</span>
                     <span class="g-stat-val">{{ health()!.storageFreeBytes | fileSize }}</span>
                   </div>
                 </div>
@@ -205,19 +208,19 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
                   </svg>
                 </div>
-                <span class="infra-title">PostgreSQL Database</span>
+                <span class="infra-title">{{ 'admin.health.dbState' | translate }}</span>
                 <span class="db-status-pill" [class.db-status-pill--healthy]="health()!.databaseStatus === 'Healthy'">
                   {{ health()!.databaseStatus }}
                 </span>
               </div>
               <div class="infra-details">
                 <div class="detail-line">
-                  <span>Round-Trip Latency:</span>
+                  <span>{{ 'admin.health.latency' | translate }}:</span>
                   <strong>{{ health()!.databaseLatencyMs }} ms</strong>
                 </div>
                 <div class="detail-line">
-                  <span>Connection Status:</span>
-                  <span class="val-green">Online & Responsive</span>
+                  <span>Status:</span>
+                  <span class="val-green">{{ 'admin.health.connected' | translate }}</span>
                 </div>
               </div>
             </div>
@@ -233,17 +236,17 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                   </svg>
                 </div>
-                <span class="infra-title">Node Fleet</span>
+                <span class="infra-title">{{ 'admin.nodes.fleetStatus' | translate }}</span>
                 <span class="node-fleet-count">{{ health()!.totalNodes }} Registered</span>
               </div>
               <div class="infra-details">
                 <div class="detail-line">
-                  <span>Online Daemons:</span>
-                  <strong class="val-green">{{ health()!.onlineNodes }} nodes</strong>
+                  <span>Online:</span>
+                  <strong class="val-green">{{ health()!.onlineNodes }}</strong>
                 </div>
                 <div class="detail-line">
-                  <span>Offline / Warning:</span>
-                  <span [class.val-red]="health()!.offlineNodes > 0">{{ health()!.offlineNodes }} nodes</span>
+                  <span>Offline:</span>
+                  <span [class.val-red]="health()!.offlineNodes > 0">{{ health()!.offlineNodes }}</span>
                 </div>
               </div>
             </div>
@@ -259,13 +262,13 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                     <circle cx="9" cy="7" r="4"></circle>
                   </svg>
                 </div>
-                <span class="infra-title">User Accounts</span>
+                <span class="infra-title">{{ 'admin.users.title' | translate }}</span>
                 <span class="user-count">{{ health()!.totalUsers }} Users</span>
               </div>
               <div class="infra-details">
                 <div class="detail-line">
-                  <span>Active Sessions:</span>
-                  <strong>{{ health()!.activeSessionsCount }} connected</strong>
+                  <span>{{ 'admin.users.sessions' | translate }}:</span>
+                  <strong>{{ health()!.activeSessionsCount }}</strong>
                 </div>
                 <div class="detail-line">
                   <span>Auth Mechanism:</span>
@@ -288,24 +291,24 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
                 </svg>
               </div>
               <div>
-                <h3 class="runtime-title">Server Runtime Environment</h3>
-                <span class="runtime-sub">Host operating system and .NET execution runtime</span>
+                <h3 class="runtime-title">{{ 'admin.health.platformState' | translate }}</h3>
+                <span class="runtime-sub">{{ 'admin.health.platformDesc' | translate }}</span>
               </div>
             </div>
 
             <div class="runtime-grid">
               <div class="runtime-item">
-                <span class="runtime-lbl">Operating System</span>
+                <span class="runtime-lbl">{{ 'admin.health.osPlatform' | translate }}</span>
                 <span class="runtime-val">{{ health()!.osDescription }}</span>
               </div>
 
               <div class="runtime-item">
-                <span class="runtime-lbl">Framework & Runtime</span>
+                <span class="runtime-lbl">{{ 'admin.health.runtime' | translate }}</span>
                 <span class="runtime-val">{{ health()!.frameworkDescription }}</span>
               </div>
 
               <div class="runtime-item">
-                <span class="runtime-lbl">Process Uptime</span>
+                <span class="runtime-lbl">{{ 'admin.health.uptime' | translate }}</span>
                 <span class="runtime-val val-green">{{ formattedUptime() }}</span>
               </div>
 

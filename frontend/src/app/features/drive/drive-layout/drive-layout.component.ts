@@ -26,8 +26,11 @@ import { UploadTrayComponent } from '../upload-tray/upload-tray.component';
 import { TrashBinComponent } from '../trash-bin/trash-bin.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { I18nService } from '../../../core/services/i18n.service';
+import { I18nService, SUPPORTED_LANGUAGES } from '../../../core/services/i18n.service';
+import { DragStateService } from '../../../core/services/drag-state.service';
+import { GlassDropdownComponent, DropdownOption } from '../../../shared/components/glass-dropdown/glass-dropdown.component';
 import { UploadQueueModalComponent } from '../upload-queue-modal/upload-queue-modal.component';
+import { SearchScopeModalComponent, SearchScopeResult } from '../search-scope-modal/search-scope-modal.component';
 
 type DriveViewTab = 'files' | 'favorites' | 'trash';
 type DisplayMode = 'grid' | 'list';
@@ -41,6 +44,7 @@ type DisplayMode = 'grid' | 'list';
     BreadcrumbsComponent,
     GlassButtonComponent,
     GlassModalComponent,
+    GlassDropdownComponent,
     ContextMenuComponent,
     FileGridComponent,
     FileListComponent,
@@ -50,6 +54,7 @@ type DisplayMode = 'grid' | 'list';
     FileSizePipe,
     TranslatePipe,
     UploadQueueModalComponent,
+    SearchScopeModalComponent,
     RouterModule
   ],
   template: `
@@ -123,6 +128,10 @@ type DisplayMode = 'grid' | 'list';
           <a
             routerLink="/shared"
             class="nav-item"
+            [class.nav-item--dragover]="isSharedNavDragOver()"
+            (dragover)="onSharedNavDragOver($event)"
+            (dragleave)="onSharedNavDragLeave($event)"
+            (drop)="onSharedNavDrop($event)"
             [title]="'nav.shared' | translate"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -270,10 +279,28 @@ type DisplayMode = 'grid' | 'list';
                 [ngModel]="searchQuery()"
                 (ngModelChange)="onSearchQueryChange($event)"
               />
-              <select class="scope-select" [ngModel]="searchScope()" (ngModelChange)="onSearchScopeChange($event)">
-                <option value="everywhere">{{ 'search.scopeEverywhere' | translate }}</option>
-                <option value="current">{{ 'search.scopeCurrentFolder' | translate }}</option>
-              </select>
+              <button
+                type="button"
+                class="scope-pill-btn"
+                (click)="openSearchScopeModal()"
+                [title]="'search.scopeTitle' | translate"
+              >
+                <svg class="scope-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="4" y1="21" x2="4" y2="14"></line>
+                  <line x1="4" y1="10" x2="4" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12" y2="3"></line>
+                  <line x1="20" y1="21" x2="20" y2="16"></line>
+                  <line x1="20" y1="12" x2="20" y2="3"></line>
+                  <line x1="1" y1="14" x2="7" y2="14"></line>
+                  <line x1="9" y1="8" x2="15" y2="8"></line>
+                  <line x1="17" y1="16" x2="23" y2="16"></line>
+                </svg>
+                <span class="scope-pill-text">{{ 'search.scopePrefix' | translate }}{{ searchScopeLabel() }}</span>
+                <svg class="scope-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
               @if (searchQuery()) {
                 <button class="clear-search" (click)="clearSearch()">✕</button>
               }
@@ -314,11 +341,13 @@ type DisplayMode = 'grid' | 'list';
 
               <!-- Language Selector -->
               <div class="lang-selector">
-                <select [ngModel]="i18n.currentLang()" (ngModelChange)="i18n.setLanguage($event)">
-                  @for (lang of i18n.supportedLanguages; track lang.code) {
-                    <option [value]="lang.code">{{ lang.shortLabel }}</option>
-                  }
-                </select>
+                <app-glass-dropdown
+                  size="sm"
+                  variant="subtle"
+                  [options]="languageOptions"
+                  [value]="i18n.currentLang()"
+                  (valueChange)="i18n.setLanguage($event)"
+                ></app-glass-dropdown>
               </div>
 
               <!-- New Folder & Upload Buttons -->
@@ -507,36 +536,47 @@ type DisplayMode = 'grid' | 'list';
       @if (selectedCount() > 0) {
         <div class="bulk-action-bar anim-slide-in-up">
           <div class="bulk-count">
+            <span class="bulk-count-label">{{ 'files.selectedLabel' | translate }}</span>
             <span class="count-badge">{{ selectedCount() }}</span>
-            <span>selected</span>
           </div>
 
           <div class="bulk-divider"></div>
 
           <div class="bulk-buttons">
-            <button class="bulk-btn" (click)="downloadSelectedZip()" title="Download as ZIP">
+            <button class="bulk-btn" (click)="downloadSelectedZip()" [title]="'files.downloadSelected' | translate">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              <span>Download ZIP</span>
+              <span>{{ 'files.downloadSelected' | translate }}</span>
             </button>
 
-            <button class="bulk-btn" (click)="openBulkMoveModal()" title="Move selected items">
+            <button class="bulk-btn" (click)="openBulkMoveModal()" [title]="'files.move' | translate">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 12h14"></path>
                 <path d="M12 5l7 7-7 7"></path>
               </svg>
-              <span>Move</span>
+              <span>{{ 'files.move' | translate }}</span>
             </button>
 
-            <button class="bulk-btn bulk-btn--danger" (click)="openBulkDeleteModal()" title="Move selected items to Trash">
+            <button class="bulk-btn" (click)="openBulkCopyToSharedModal()" [title]="'files.copyToShared' | translate">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+              <span>{{ 'files.copyToShared' | translate }}</span>
+            </button>
+
+            <button class="bulk-btn bulk-btn--danger" (click)="openBulkDeleteModal()" [title]="'files.delete' | translate">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
-              <span>Delete</span>
+              <span>{{ 'files.delete' | translate }}</span>
             </button>
           </div>
 
@@ -549,23 +589,23 @@ type DisplayMode = 'grid' | 'list';
       <!-- Bulk Delete Modal -->
       <app-glass-modal
         [isOpen]="bulkDeleteModalOpen()"
-        title="Move to Trash"
+        [title]="'files.deleteModalTitle' | translate"
         (close)="bulkDeleteModalOpen.set(false)"
       >
-        <p>Are you sure you want to move <strong>{{ selectedCount() }}</strong> selected item(s) to Trash?</p>
+        <p>{{ 'files.deleteModalConfirm' | translate:{ count: selectedCount() } }}</p>
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="bulkDeleteModalOpen.set(false)">Cancel</app-glass-button>
-          <app-glass-button variant="danger" (btnClick)="applyBulkDelete()">Move to Trash</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="bulkDeleteModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
+          <app-glass-button variant="danger" (btnClick)="applyBulkDelete()">{{ 'files.moveToTrash' | translate }}</app-glass-button>
         </div>
       </app-glass-modal>
 
       <!-- Bulk Move Modal -->
       <app-glass-modal
         [isOpen]="bulkMoveModalOpen()"
-        title="Move Items"
+        [title]="'files.moveModalTitle' | translate"
         (close)="bulkMoveModalOpen.set(false)"
       >
-        <p class="modal-sub">Choose destination folder for <strong>{{ selectedCount() }}</strong> item(s):</p>
+        <p class="modal-sub">{{ 'files.moveModalSubtitle' | translate:{ count: selectedCount() } }}</p>
         <div class="move-folder-list">
           <button
             class="folder-select-item"
@@ -573,7 +613,7 @@ type DisplayMode = 'grid' | 'list';
             (click)="bulkMoveTargetFolderId = null"
           >
             <span class="folder-select-icon">📁</span>
-            <span>Root Drive</span>
+            <span>{{ 'files.rootDrive' | translate }}</span>
           </button>
           @for (folder of availableMoveFolders(); track folder.id) {
             <button
@@ -587,10 +627,56 @@ type DisplayMode = 'grid' | 'list';
           }
         </div>
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="bulkMoveModalOpen.set(false)">Cancel</app-glass-button>
-          <app-glass-button variant="primary" (btnClick)="applyBulkMove()">Move here</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="bulkMoveModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
+          <app-glass-button variant="primary" (btnClick)="applyBulkMove()">{{ 'files.moveHere' | translate }}</app-glass-button>
         </div>
       </app-glass-modal>
+
+      <!-- Bulk Copy To Shared Modal -->
+      <app-glass-modal
+        [isOpen]="bulkCopyToSharedModalOpen()"
+        [title]="'files.copyToShared' | translate"
+        (close)="bulkCopyToSharedModalOpen.set(false)"
+      >
+        <p class="modal-sub">{{ 'files.copyToSharedSubtitle' | translate }} <strong>{{ selectedCount() }}</strong> эл.:</p>
+        <div class="move-folder-list">
+          <button
+            class="folder-select-item"
+            [class.folder-select-item--active]="bulkCopyToSharedTargetFolderId === null"
+            (click)="bulkCopyToSharedTargetFolderId = null"
+          >
+            <span class="folder-select-icon">📁</span>
+            <span>{{ 'files.sharedRoot' | translate }}</span>
+          </button>
+          @for (folder of availableSharedFolders(); track folder.id) {
+            <button
+              class="folder-select-item"
+              [class.folder-select-item--active]="bulkCopyToSharedTargetFolderId === folder.id"
+              (click)="bulkCopyToSharedTargetFolderId = folder.id"
+            >
+              <span class="folder-select-icon" [style.color]="folder.color || 'var(--omega-accent)'">📁</span>
+              <span>{{ folder.name }}</span>
+            </button>
+          }
+        </div>
+        <div footer>
+          <app-glass-button variant="secondary" (btnClick)="bulkCopyToSharedModalOpen.set(false)">
+            {{ 'common.cancel' | translate }}
+          </app-glass-button>
+          <app-glass-button variant="primary" (btnClick)="applyBulkCopyToShared()">
+            {{ 'files.copyToShared' | translate }}
+          </app-glass-button>
+        </div>
+      </app-glass-modal>
+
+      <!-- Search Scope Modal -->
+      <app-search-scope-modal
+        [isOpen]="isSearchScopeModalOpen()"
+        [initialScope]="searchScope()"
+        [initialFolderIds]="searchFolderIds()"
+        (close)="isSearchScopeModalOpen.set(false)"
+        (applyScope)="onApplySearchScope($event)"
+      ></app-search-scope-modal>
 
       <!-- Folder Properties Modal -->
       <app-glass-modal
@@ -647,6 +733,23 @@ type DisplayMode = 'grid' | 'list';
             </svg>
             <span>{{ 'files.downloadSelected' | translate }}</span>
           </button>
+          <button class="sheet-btn" (click)="openBulkMoveModal()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14"></path>
+              <path d="M12 5l7 7-7 7"></path>
+            </svg>
+            <span>{{ 'files.move' | translate }}</span>
+          </button>
+          <button class="sheet-btn" (click)="openBulkCopyToSharedModal()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span>{{ 'files.copyToShared' | translate }}</span>
+          </button>
           <button class="sheet-btn sheet-btn--danger" (click)="openBulkDeleteModal()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
@@ -684,10 +787,13 @@ type DisplayMode = 'grid' | 'list';
     }
 
     .sidebar-brand {
-      padding: 24px 20px 20px;
+      height: 64px;
+      padding: 0 20px;
       display: flex;
       align-items: center;
       gap: 12px;
+      border-bottom: 1px solid var(--omega-glass-border-subtle);
+      box-sizing: border-box;
     }
 
     .brand-icon {
@@ -737,6 +843,14 @@ type DisplayMode = 'grid' | 'list';
         background: var(--omega-accent-subtle);
         color: var(--omega-accent);
         font-weight: 600;
+      }
+
+      &--dragover {
+        border-color: var(--omega-accent) !important;
+        background: var(--omega-accent-subtle) !important;
+        color: var(--omega-accent) !important;
+        transform: scale(1.04);
+        box-shadow: 0 0 16px rgba(0, 113, 227, 0.45);
       }
     }
 
@@ -913,8 +1027,9 @@ type DisplayMode = 'grid' | 'list';
       position: relative;
       display: flex;
       align-items: center;
+      gap: 8px;
 
-      svg {
+      > svg {
         position: absolute;
         left: 12px;
         color: var(--omega-text-muted);
@@ -922,7 +1037,7 @@ type DisplayMode = 'grid' | 'list';
       }
 
       input {
-        width: 200px;
+        width: 190px;
         height: 38px;
         padding-left: 34px;
         padding-right: 28px;
@@ -931,12 +1046,52 @@ type DisplayMode = 'grid' | 'list';
 
       .clear-search {
         position: absolute;
-        right: 10px;
+        left: 165px;
         font-size: 11px;
         color: var(--omega-text-muted);
+        background: none;
+        border: none;
+        cursor: pointer;
 
         &:hover {
           color: var(--omega-text-primary);
+        }
+      }
+
+      .scope-pill-btn {
+        @include glass-surface;
+        padding: 5px 12px;
+        border-radius: var(--omega-radius-pill);
+        border: 1px solid var(--omega-glass-border-subtle);
+        color: var(--omega-text-secondary);
+        font-size: 12px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.2s var(--omega-ease-smooth);
+        white-space: nowrap;
+        max-width: 180px;
+        height: 34px;
+
+        &:hover {
+          background: var(--omega-glass-bg-hover);
+          color: var(--omega-text-primary);
+          border-color: var(--omega-accent);
+        }
+
+        .scope-pill-text {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .scope-chevron {
+          position: static;
+          flex-shrink: 0;
+          opacity: 0.7;
+          pointer-events: auto;
         }
       }
     }
@@ -1251,7 +1406,7 @@ type DisplayMode = 'grid' | 'list';
       @include glass-elevated;
       border-radius: 16px 16px 0 0;
       padding: 16px 20px 24px;
-      display: flex;
+      display: none; /* hidden on desktop */
       flex-direction: column;
       gap: 12px;
       transform: translateY(110%);
@@ -1342,6 +1497,10 @@ type DisplayMode = 'grid' | 'list';
         justify-content: center;
       }
 
+      .mobile-action-sheet {
+        display: flex;
+      }
+
       .bulk-action-bar {
         display: none; /* replaced by mobile action sheet */
       }
@@ -1360,6 +1519,12 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   readonly toastService = inject(ToastService);
   readonly i18n = inject(I18nService);
+  readonly dragState = inject(DragStateService);
+
+  readonly languageOptions: DropdownOption[] = SUPPORTED_LANGUAGES.map(l => ({
+    value: l.code,
+    label: l.shortLabel
+  }));
 
   currentTab = signal<DriveViewTab>('files');
   displayMode = signal<DisplayMode>('grid');
@@ -1378,7 +1543,12 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   readonly selectedCount = computed(() => this.selectedFolderIds().length + this.selectedFileIds().length);
 
   searchQuery = signal<string>('');
-  searchScope = signal<'everywhere' | 'current'>('everywhere');
+  searchScope = signal<'everywhere' | 'personal' | 'shared' | 'custom'>('everywhere');
+  searchFolderIds = signal<string[]>([]);
+  searchScopeLabel = signal<string>(this.i18n.translate('search.scopeEverywhere'));
+  isSearchScopeModalOpen = signal<boolean>(false);
+
+  isSharedNavDragOver = signal<boolean>(false);
   readonly searchResults = signal<FolderContent | null>(null);
   readonly isSearching = signal<boolean>(false);
   isMobileMenuOpen = signal<boolean>(false);
@@ -1417,6 +1587,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   bulkDeleteModalOpen = signal<boolean>(false);
   bulkMoveModalOpen = signal<boolean>(false);
   bulkMoveTargetFolderId: string | null = null;
+  bulkCopyToSharedModalOpen = signal<boolean>(false);
+  bulkCopyToSharedTargetFolderId: string | null = null;
+  availableSharedFolders = signal<FolderItem[]>([]);
   folderPropertiesModalOpen = signal<boolean>(false);
 
   private subs: Subscription[] = [];
@@ -1431,16 +1604,22 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     return user.username.slice(0, 2).toUpperCase();
   });
 
-  onSearchQueryChange(query: string): void {
-    this.searchQuery.set(query);
-    this.performSearch();
+  openSearchScopeModal(): void {
+    this.isSearchScopeModalOpen.set(true);
   }
 
-  onSearchScopeChange(scope: 'everywhere' | 'current'): void {
-    this.searchScope.set(scope);
+  onApplySearchScope(result: SearchScopeResult): void {
+    this.searchScope.set(result.scope);
+    this.searchFolderIds.set(result.folderIds);
+    this.searchScopeLabel.set(result.label);
     if (this.searchQuery().trim()) {
       this.performSearch();
     }
+  }
+
+  onSearchQueryChange(query: string): void {
+    this.searchQuery.set(query);
+    this.performSearch();
   }
 
   clearSearch(): void {
@@ -1456,8 +1635,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     }
 
     this.isSearching.set(true);
-    const folderId = this.searchScope() === 'current' ? this.currentFolderId() : null;
-    this.apiService.searchFiles(q, folderId, this.searchScope()).subscribe({
+    const scope = this.searchScope();
+    const folderIds = this.searchFolderIds();
+    this.apiService.searchFiles(q, null, scope, folderIds).subscribe({
       next: (res) => {
         this.isSearching.set(false);
         this.searchResults.set(res);
@@ -1532,6 +1712,12 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
     // Route query param subscription (History API integration)
     this.subs.push(
       this.route.queryParams.subscribe(params => {
+        const tabParam = params['tab'];
+        if (tabParam === 'favorites' || tabParam === 'trash' || tabParam === 'files') {
+          if (this.currentTab() !== tabParam) {
+            this.currentTab.set(tabParam as DriveViewTab);
+          }
+        }
         const folderParam = params['folder'] || null;
         if (folderParam !== this.currentFolderId()) {
           this.switchFolder(folderParam);
@@ -1571,11 +1757,23 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
       this.bulkMoveModalOpen.set(false);
     } else if (this.bulkDeleteModalOpen()) {
       this.bulkDeleteModalOpen.set(false);
+    } else if (this.bulkCopyToSharedModalOpen()) {
+      this.bulkCopyToSharedModalOpen.set(false);
+    } else if (this.isSearchScopeModalOpen()) {
+      this.isSearchScopeModalOpen.set(false);
     } else if (this.folderPropertiesModalOpen()) {
       this.folderPropertiesModalOpen.set(false);
     } else if (this.selectedCount() > 0) {
       this.clearSelection();
     }
+  }
+
+  @HostListener('document:dragend')
+  onDocumentDragEnd(): void {
+    this.isSharedNavDragOver.set(false);
+    this.isDraggingOver.set(false);
+    this.dragCounter = 0;
+    this.dragState.endDrag();
   }
 
   selectTab(tab: DriveViewTab): void {
@@ -1728,6 +1926,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
   // Drag and Drop (from OS into Window)
   onWindowDragEnter(event: DragEvent): void {
     event.preventDefault();
+    if (this.dragState.isDragging()) {
+      return;
+    }
     this.dragCounter++;
     if (event.dataTransfer?.types?.includes('Files')) {
       this.isDraggingOver.set(true);
@@ -1736,6 +1937,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
 
   onWindowDragOver(event: DragEvent): void {
     event.preventDefault();
+    if (this.dragState.isDragging()) {
+      return;
+    }
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'copy';
     }
@@ -1743,6 +1947,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
 
   onWindowDragLeave(event: DragEvent): void {
     event.preventDefault();
+    if (this.dragState.isDragging()) {
+      return;
+    }
     this.dragCounter--;
     if (this.dragCounter <= 0) {
       this.isDraggingOver.set(false);
@@ -1752,6 +1959,9 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
 
   async onWindowDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
+    if (this.dragState.isDragging()) {
+      return;
+    }
     this.isDraggingOver.set(false);
     this.dragCounter = 0;
 
@@ -1862,7 +2072,7 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
           this.toastService.success(`Moved items into ${payload.targetFolder.name}`);
         },
         error: (err) => {
-          if (payload.fileId) {
+          if (payload.fileId && fIds.length <= 1 && folderIds.length === 0) {
             this.apiService.updateFile(payload.fileId, { folderId: payload.targetFolder.id }).subscribe({
               next: () => {
                 this.loadCurrentFolder();
@@ -1888,6 +2098,7 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
 
     this.contextMenuItems.set([
       { id: 'open', label: 'Open Folder' },
+      { id: 'copy_shared', label: 'Копировать в Общий' },
       { id: 'rename', label: 'Rename' },
       { id: 'delete', label: 'Move to Trash', danger: true, dividerBefore: true }
     ]);
@@ -1903,6 +2114,7 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
 
     this.contextMenuItems.set([
       { id: 'download', label: 'Download' },
+      { id: 'copy_shared', label: 'Копировать в Общий' },
       { id: 'details', label: 'Inspector' },
       { id: 'star', label: payload.file.isFavorite ? 'Remove from Favorites' : 'Add to Favorites' },
       { id: 'rename', label: 'Rename' },
@@ -1949,6 +2161,10 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
       const folder = this.contextTargetFolder;
       if (actionId === 'open') {
         this.onOpenFolder(folder);
+      } else if (actionId === 'copy_shared') {
+        this.selectedFolderIds.set([folder.id]);
+        this.selectedFileIds.set([]);
+        this.openBulkCopyToSharedModal();
       } else if (actionId === 'rename') {
         this.openRenameModal({ type: 'folder', id: folder.id, name: folder.name });
       } else if (actionId === 'delete') {
@@ -1958,6 +2174,10 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
       const file = this.contextTargetFile;
       if (actionId === 'download') {
         this.onDownloadFile(file);
+      } else if (actionId === 'copy_shared') {
+        this.selectedFolderIds.set([]);
+        this.selectedFileIds.set([file.id]);
+        this.openBulkCopyToSharedModal();
       } else if (actionId === 'details') {
         this.inspectorFile.set(file);
       } else if (actionId === 'star') {
@@ -2036,6 +2256,101 @@ export class DriveLayoutComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         const msg = err?.error?.message || 'Failed to delete items';
+        this.toastService.error(msg);
+      }
+    });
+  }
+
+  onSharedNavDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    this.isSharedNavDragOver.set(true);
+  }
+
+  onSharedNavDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const currentTarget = event.currentTarget as HTMLElement;
+    const relatedTarget = event.relatedTarget as HTMLElement;
+    if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+      return;
+    }
+    this.isSharedNavDragOver.set(false);
+  }
+
+  onSharedNavDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isSharedNavDragOver.set(false);
+
+    const dragData = this.dragState.getDragData();
+    let fileIds: string[] = dragData?.fileIds ? [...dragData.fileIds] : [];
+    let folderIds: string[] = dragData?.folderIds ? [...dragData.folderIds] : [];
+
+    if (!fileIds.length && !folderIds.length && event.dataTransfer) {
+      const dataStr = event.dataTransfer.getData('application/json');
+      if (dataStr) {
+        try {
+          const parsed = JSON.parse(dataStr);
+          fileIds = parsed.fileIds || (parsed.fileId ? [parsed.fileId] : []);
+          folderIds = parsed.folderIds || [];
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (fileIds.length > 0 || folderIds.length > 0) {
+      this.apiService.copyToShared(fileIds, folderIds, null).subscribe({
+        next: () => {
+          this.toastService.success(this.i18n.currentLang() === 'ru' ? 'Скопировано в общий раздел' : 'Copied to Shared Space');
+          this.clearSelection();
+          this.loadCurrentFolder();
+        },
+        error: (err) => {
+          const msg = err?.error?.message || 'Failed to copy to shared space';
+          this.toastService.error(msg);
+        }
+      });
+    }
+
+    this.dragState.endDrag();
+  }
+
+  openBulkCopyToSharedModal(): void {
+    this.bulkCopyToSharedTargetFolderId = null;
+    this.apiService.getSharedFolders(null).subscribe({
+      next: (content) => {
+        this.availableSharedFolders.set(content.folders || []);
+        this.bulkCopyToSharedModalOpen.set(true);
+      },
+      error: () => {
+        this.availableSharedFolders.set([]);
+        this.bulkCopyToSharedModalOpen.set(true);
+      }
+    });
+  }
+
+  applyBulkCopyToShared(): void {
+    const fIds = this.selectedFileIds();
+    const folderIds = this.selectedFolderIds();
+    if (fIds.length === 0 && folderIds.length === 0) {
+      this.bulkCopyToSharedModalOpen.set(false);
+      return;
+    }
+
+    this.apiService.copyToShared(fIds, folderIds, this.bulkCopyToSharedTargetFolderId).subscribe({
+      next: () => {
+        this.bulkCopyToSharedModalOpen.set(false);
+        this.clearSelection();
+        this.loadCurrentFolder();
+        this.toastService.success(this.i18n.currentLang() === 'ru' ? 'Успешно скопировано в Общий раздел' : 'Items copied to Shared Space');
+      },
+      error: (err) => {
+        const msg = err?.error?.message || 'Failed to copy to Shared Space';
         this.toastService.error(msg);
       }
     });

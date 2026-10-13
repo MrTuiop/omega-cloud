@@ -375,6 +375,17 @@ public class SharedService : ISharedService
         return breadcrumbs;
     }
 
+    public Task CopyToSharedAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetSharedFolderId, Guid userId, CancellationToken ct = default)
+    {
+        return _fileService.CopyToSharedAsync(fileIds, folderIds, targetSharedFolderId, userId, ct);
+    }
+
+    public Task SaveToPersonalAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetFolderId, Guid userId, CancellationToken ct = default)
+    {
+        return _fileService.SaveToPersonalAsync(fileIds, folderIds, targetFolderId, userId, ct);
+    }
+
+
     private static FolderDto MapToDto(Folder f) => new FolderDto
     {
         Id = f.Id,

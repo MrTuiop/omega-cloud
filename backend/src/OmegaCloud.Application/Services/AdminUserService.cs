@@ -151,19 +151,22 @@ public class AdminUserService : IAdminUserService
             }
         }
 
-        var targetQuota = request.AllocatedQuotaBytes ?? 107_374_182_400L; // 100 GB default
-
-        // Validate physical node capacity limit: sum(AllocatedQuotaBytes) <= sum(ActiveNodes.MaxCapacityBytes)
+        // Validate physical node capacity limit: targetQuota <= sum(ActiveNodes.MaxCapacityBytes)
+        // Overprovisioning is supported: sum of user quotas can exceed cluster capacity,
+        // but an individual user's quota cannot exceed total active storage nodes capacity.
         var totalActiveNodesCapacity = await _db.StorageNodes
             .Where(n => n.IsActive)
             .SumAsync(n => n.MaxCapacityBytes, ct);
 
-        var currentTotalAllocated = await _db.Users
-            .SumAsync(u => u.AllocatedQuotaBytes, ct);
+        var defaultQuota = totalActiveNodesCapacity > 0
+            ? Math.Min(107_374_182_400L, totalActiveNodesCapacity)
+            : 107_374_182_400L;
 
-        if (currentTotalAllocated + targetQuota > totalActiveNodesCapacity)
+        var targetQuota = request.AllocatedQuotaBytes ?? defaultQuota;
+
+        if (targetQuota > totalActiveNodesCapacity)
         {
-            throw new ValidationException($"Cannot allocate {targetQuota} bytes. Total user quotas ({currentTotalAllocated + targetQuota} bytes) would exceed active storage nodes capacity ({totalActiveNodesCapacity} bytes).");
+            throw new ValidationException($"Cannot allocate {targetQuota} bytes. User quota ({targetQuota} bytes) would exceed active storage nodes capacity ({totalActiveNodesCapacity} bytes).");
         }
 
         var user = new User
@@ -257,13 +260,9 @@ public class AdminUserService : IAdminUserService
                 .Where(n => n.IsActive)
                 .SumAsync(n => n.MaxCapacityBytes, ct);
 
-            var otherUsersAllocated = await _db.Users
-                .Where(u => u.Id != id)
-                .SumAsync(u => u.AllocatedQuotaBytes, ct);
-
-            if (otherUsersAllocated + targetQuota > totalActiveNodesCapacity)
+            if (targetQuota > totalActiveNodesCapacity)
             {
-                throw new ValidationException($"Cannot allocate {targetQuota} bytes. Total user quotas ({otherUsersAllocated + targetQuota} bytes) would exceed active storage nodes capacity ({totalActiveNodesCapacity} bytes).");
+                throw new ValidationException($"Cannot allocate {targetQuota} bytes. User quota ({targetQuota} bytes) would exceed active storage nodes capacity ({totalActiveNodesCapacity} bytes).");
             }
 
             user.AllocatedQuotaBytes = targetQuota;

@@ -2,11 +2,14 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
+import { I18nService } from '../../../core/services/i18n.service';
 import { AuditLog } from '../../../core/models/admin.models';
 import { GlassCardComponent } from '../../../shared/components/glass-card/glass-card.component';
 import { GlassButtonComponent } from '../../../shared/components/glass-button/glass-button.component';
 import { GlassModalComponent } from '../../../shared/components/glass-modal/glass-modal.component';
+import { GlassDropdownComponent, DropdownOption } from '../../../shared/components/glass-dropdown/glass-dropdown.component';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-audit-log',
@@ -17,22 +20,24 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
     GlassCardComponent,
     GlassButtonComponent,
     GlassModalComponent,
-    RelativeTimePipe
+    GlassDropdownComponent,
+    RelativeTimePipe,
+    TranslatePipe
   ],
   template: `
     <div class="page-container anim-fade-in">
       <!-- Header -->
       <div class="page-header">
         <div class="header-titles">
-          <h1 class="page-title">System Audit Trail</h1>
-          <p class="page-subtitle">Historical audit trail of security, user authentication, file modifications & node actions.</p>
+          <h1 class="page-title">{{ 'admin.audit.title' | translate }}</h1>
+          <p class="page-subtitle">{{ 'admin.audit.subtitle' | translate }}</p>
         </div>
         <div class="header-actions">
           <app-glass-button variant="secondary" size="md" (btnClick)="loadLogs()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            Refresh
+            {{ 'admin.audit.refresh' | translate }}
           </app-glass-button>
         </div>
       </div>
@@ -41,33 +46,33 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <div class="stats-grid">
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Total Events Loaded</div>
+            <div class="stat-label">{{ 'admin.audit.totalEvents' | translate }}</div>
             <div class="stat-value">{{ logs().length }}</div>
-            <div class="stat-sub">Audit trail records</div>
+            <div class="stat-sub">{{ 'admin.audit.auditRecords' | translate }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Security & Auth Events</div>
+            <div class="stat-label">{{ 'admin.audit.authEvents' | translate }}</div>
             <div class="stat-value">{{ authEventsCount() }}</div>
-            <div class="stat-sub">Logins, logouts & tokens</div>
+            <div class="stat-sub">{{ 'admin.audit.authSub' | translate }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Administrative Actions</div>
+            <div class="stat-label">{{ 'admin.audit.adminActions' | translate }}</div>
             <div class="stat-value">{{ adminActionsCount() }}</div>
-            <div class="stat-sub">User updates, password resets</div>
+            <div class="stat-sub">{{ 'admin.audit.adminSub' | translate }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Node Operations</div>
+            <div class="stat-label">{{ 'admin.audit.nodeOps' | translate }}</div>
             <div class="stat-value">{{ nodeEventsCount() }}</div>
-            <div class="stat-sub">Pings, registrations & updates</div>
+            <div class="stat-sub">{{ 'admin.audit.nodeSub' | translate }}</div>
           </div>
         </app-glass-card>
       </div>
@@ -81,7 +86,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
           </svg>
           <input
             type="text"
-            placeholder="Search by user, IP, resource..."
+            [placeholder]="'admin.audit.searchPlaceholder' | translate"
             [ngModel]="searchQuery()"
             (ngModelChange)="onSearchChange($event)"
           />
@@ -91,33 +96,21 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         </div>
 
         <div class="filters">
-          <select [ngModel]="actionFilter()" (ngModelChange)="onActionChange($event)" class="glass-select">
-            <option value="All">All Actions</option>
-            <option value="UserLogin">User Login</option>
-            <option value="UserLogout">User Logout</option>
-            <option value="UserCreated">User Created</option>
-            <option value="UserUpdated">User Updated</option>
-            <option value="PasswordReset">Password Reset</option>
-            <option value="SessionRevoked">Session Revoked</option>
-            <option value="SessionsRevoked">Sessions Revoked</option>
-            <option value="UserDeleted">User Deleted</option>
-            <option value="FileUploaded">File Uploaded</option>
-            <option value="FileDownloaded">File Downloaded</option>
-            <option value="FileDeleted">File Deleted</option>
-            <option value="TrashEmptied">Trash Emptied</option>
-            <option value="NodeRegistered">Node Registered</option>
-            <option value="NodeWentOffline">Node Went Offline</option>
-            <option value="NodeTokenGenerated">Node Token Generated</option>
-            <option value="NodePinged">Node Pinged</option>
-            <option value="NodeUpdated">Node Updated</option>
-            <option value="NodeDeleted">Node Deleted</option>
-          </select>
+          <div class="filter-dropdown">
+            <app-glass-dropdown
+              [value]="actionFilter()"
+              [options]="actionOptions()"
+              (valueChange)="onActionChange($event)"
+            ></app-glass-dropdown>
+          </div>
 
-          <select [ngModel]="limitOption()" (ngModelChange)="onLimitChange($event)" class="glass-select">
-            <option [value]="50">50 entries</option>
-            <option [value]="100">100 entries</option>
-            <option [value]="250">250 entries</option>
-          </select>
+          <div class="limit-dropdown">
+            <app-glass-dropdown
+              [value]="limitOption()"
+              [options]="limitOptions()"
+              (valueChange)="onLimitChange($event)"
+            ></app-glass-dropdown>
+          </div>
         </div>
       </div>
 
@@ -126,7 +119,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         @if (isLoading()) {
           <div class="loading-state">
             <div class="loading-spinner"></div>
-            <span>Loading audit log entries...</span>
+            <span>{{ 'admin.audit.loading' | translate }}</span>
           </div>
         } @else if (logs().length === 0) {
           <div class="empty-state">
@@ -134,21 +127,21 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
             </svg>
-            <h3>No audit records found</h3>
-            <p>Try clearing your filter criteria.</p>
+            <h3>{{ 'admin.audit.noRecords' | translate }}</h3>
+            <p>{{ 'admin.audit.clearFilters' | translate }}</p>
           </div>
         } @else {
           <div class="table-wrapper">
             <table class="glass-table">
               <thead>
                 <tr>
-                  <th>Timestamp</th>
-                  <th>Action</th>
-                  <th>Actor / User</th>
-                  <th>Target Resource</th>
-                  <th>IP Address</th>
-                  <th>Details</th>
-                  <th class="actions-header">Inspect</th>
+                  <th>{{ 'admin.audit.colTimestamp' | translate }}</th>
+                  <th>{{ 'admin.audit.colAction' | translate }}</th>
+                  <th>{{ 'admin.audit.colUser' | translate }}</th>
+                  <th>{{ 'admin.audit.colResource' | translate }}</th>
+                  <th>{{ 'admin.audit.colIp' | translate }}</th>
+                  <th>{{ 'admin.audit.colDetails' | translate }}</th>
+                  <th class="actions-header">{{ 'admin.audit.colDetails' | translate }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -170,7 +163,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                         <div class="actor-avatar">
                           {{ (log.userName || 'System').slice(0, 2).toUpperCase() }}
                         </div>
-                        <span class="actor-name">{{ log.userName || 'System / Anonymous' }}</span>
+                        <span class="actor-name">{{ log.userName || ('admin.audit.system' | translate) }}</span>
                       </div>
                     </td>
                     <td>
@@ -192,7 +185,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                       </span>
                     </td>
                     <td class="actions-cell">
-                      <button class="inspect-btn" title="Inspect details" (click)="openInspectModal(log)">
+                      <button class="inspect-btn" [title]="'admin.audit.viewDetails' | translate" (click)="openInspectModal(log)">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="11" cy="11" r="8"></circle>
                           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -210,47 +203,47 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Details Inspection Modal -->
       <app-glass-modal
         [isOpen]="inspectModalOpen()"
-        title="Audit Event Details"
+        [title]="'admin.audit.modalTitle' | translate"
         (close)="inspectModalOpen.set(false)"
       >
         @if (selectedLog()) {
           <div class="inspect-dialog">
             <div class="inspect-row">
-              <span class="inspect-lbl">Action</span>
+              <span class="inspect-lbl">{{ 'admin.audit.colAction' | translate }}</span>
               <span class="action-pill" [class]="getActionClass(selectedLog()!.action)">
                 {{ selectedLog()!.action }}
               </span>
             </div>
 
             <div class="inspect-row">
-              <span class="inspect-lbl">Timestamp</span>
+              <span class="inspect-lbl">{{ 'admin.audit.colTimestamp' | translate }}</span>
               <span>{{ selectedLog()!.timestamp | date:'yyyy-MM-dd HH:mm:ss UTC' }}</span>
             </div>
 
             <div class="inspect-row">
-              <span class="inspect-lbl">Actor</span>
-              <span>{{ selectedLog()!.userName || 'System' }} (ID: {{ selectedLog()!.userId || 'N/A' }})</span>
+              <span class="inspect-lbl">{{ 'admin.audit.actorUser' | translate }}</span>
+              <span>{{ selectedLog()!.userName || ('admin.audit.system' | translate) }} (ID: {{ selectedLog()!.userId || 'N/A' }})</span>
             </div>
 
             <div class="inspect-row">
-              <span class="inspect-lbl">Target Resource</span>
+              <span class="inspect-lbl">{{ 'admin.audit.colResource' | translate }}</span>
               <span>{{ selectedLog()!.resource }} ({{ selectedLog()!.resourceId || 'N/A' }})</span>
             </div>
 
             <div class="inspect-row">
-              <span class="inspect-lbl">Client IP</span>
+              <span class="inspect-lbl">{{ 'admin.audit.colIp' | translate }}</span>
               <code>{{ selectedLog()!.ipAddress }}</code>
             </div>
 
             <div class="inspect-json-section">
-              <label>Event Payload JSON</label>
+              <label>{{ 'admin.audit.rawPayload' | translate }}</label>
               <pre><code>{{ formatJson(selectedLog()!.detailsJson) }}</code></pre>
             </div>
           </div>
         }
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="inspectModalOpen.set(false)">Close</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="inspectModalOpen.set(false)">{{ 'common.close' | translate }}</app-glass-button>
         </div>
       </app-glass-modal>
     </div>
@@ -367,17 +360,14 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       display: flex;
       align-items: center;
       gap: 12px;
-    }
 
-    .glass-select {
-      height: 40px;
-      padding: 0 14px;
-      border-radius: var(--omega-radius-md);
-      background: var(--omega-glass-bg-sunken);
-      border: 1px solid var(--omega-glass-border);
-      color: var(--omega-text-primary);
-      outline: none;
-      cursor: pointer;
+      .filter-dropdown {
+        min-width: 170px;
+      }
+
+      .limit-dropdown {
+        min-width: 140px;
+      }
     }
 
     .table-wrapper {
@@ -647,6 +637,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 })
 export class AuditLogComponent implements OnInit {
   private readonly apiService = inject(ApiService);
+  private readonly i18n = inject(I18nService);
 
   logs = signal<AuditLog[]>([]);
   isLoading = signal<boolean>(false);
@@ -654,6 +645,34 @@ export class AuditLogComponent implements OnInit {
   searchQuery = signal<string>('');
   actionFilter = signal<string>('All');
   limitOption = signal<number>(100);
+
+  readonly limitOptions = computed<DropdownOption[]>(() => [
+    { value: 50, label: this.i18n.t('admin.audit.entries50') },
+    { value: 100, label: this.i18n.t('admin.audit.entries100') },
+    { value: 250, label: this.i18n.t('admin.audit.entries250') }
+  ]);
+
+  readonly actionOptions = computed<DropdownOption[]>(() => [
+    { value: 'All', label: this.i18n.t('admin.audit.allActions') },
+    { value: 'UserLogin', label: 'User Login' },
+    { value: 'UserLogout', label: 'User Logout' },
+    { value: 'UserCreated', label: 'User Created' },
+    { value: 'UserUpdated', label: 'User Updated' },
+    { value: 'PasswordReset', label: 'Password Reset' },
+    { value: 'SessionRevoked', label: 'Session Revoked' },
+    { value: 'SessionsRevoked', label: 'Sessions Revoked' },
+    { value: 'UserDeleted', label: 'User Deleted' },
+    { value: 'FileUploaded', label: 'File Uploaded' },
+    { value: 'FileDownloaded', label: 'File Downloaded' },
+    { value: 'FileDeleted', label: 'File Deleted' },
+    { value: 'TrashEmptied', label: 'Trash Emptied' },
+    { value: 'NodeRegistered', label: 'Node Registered' },
+    { value: 'NodeWentOffline', label: 'Node Went Offline' },
+    { value: 'NodeTokenGenerated', label: 'Node Token Generated' },
+    { value: 'NodePinged', label: 'Node Pinged' },
+    { value: 'NodeUpdated', label: 'Node Updated' },
+    { value: 'NodeDeleted', label: 'Node Deleted' }
+  ]);
 
   inspectModalOpen = signal<boolean>(false);
   selectedLog = signal<AuditLog | null>(null);

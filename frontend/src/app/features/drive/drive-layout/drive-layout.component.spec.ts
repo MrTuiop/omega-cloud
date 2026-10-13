@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { DriveLayoutComponent } from './drive-layout.component';
 import { ApiService } from '../../../core/services/api.service';
@@ -57,7 +57,7 @@ describe('DriveLayoutComponent', () => {
     expect(component.filteredFiles().length).toBe(0);
   });
 
-  it('should perform server search with scope everywhere and current', () => {
+  it('should perform server search with scope everywhere and custom scope', () => {
     fixture.detectChanges();
     const searchMock = {
       folders: [{ id: 'f-found', userId: 'u-1', name: 'Found Folder', color: '#0071e3', isDeleted: false, isShared: false, createdAt: '', updatedAt: '' }],
@@ -69,18 +69,82 @@ describe('DriveLayoutComponent', () => {
 
     // Search query change triggers search with scope everywhere
     component.onSearchQueryChange('found');
-    expect(apiService.searchFiles).toHaveBeenCalledWith('found', null, 'everywhere');
+    expect(apiService.searchFiles).toHaveBeenCalledWith('found', null, 'everywhere', []);
     expect(component.filteredFolders().length).toBe(1);
     expect(component.filteredFiles().length).toBe(1);
 
-    // Change scope to current
-    component.onSearchScopeChange('current');
-    expect(apiService.searchFiles).toHaveBeenCalledWith('found', null, 'current');
+    // Change scope via onApplySearchScope
+    component.onApplySearchScope({ scope: 'personal', folderIds: [], label: 'Личный диск' });
+    expect(apiService.searchFiles).toHaveBeenCalledWith('found', null, 'personal', []);
 
     // Clear search
     component.clearSearch();
     expect(component.searchQuery()).toBe('');
     expect(component.searchResults()).toBeNull();
+  });
+
+  it('should open search scope modal and update state on apply', () => {
+    fixture.detectChanges();
+    expect(component.isSearchScopeModalOpen()).toBeFalse();
+
+    component.openSearchScopeModal();
+    expect(component.isSearchScopeModalOpen()).toBeTrue();
+
+    component.onApplySearchScope({
+      scope: 'custom',
+      folderIds: ['folder-custom-1'],
+      label: '[Custom Folder]'
+    });
+    expect(component.searchScope()).toBe('custom');
+    expect(component.searchFolderIds()).toEqual(['folder-custom-1']);
+    expect(component.searchScopeLabel()).toBe('[Custom Folder]');
+  });
+
+  it('should copy dragged items to shared space when dropped onto shared nav item', () => {
+    fixture.detectChanges();
+    spyOn(apiService, 'copyToShared').and.returnValue(of({ message: 'Success' }));
+    const dragState = (component as any).dragState;
+    dragState.startDrag({ fileIds: ['f-drag'], folderIds: ['folder-drag'] });
+
+    const dragEvent = {
+      preventDefault: jasmine.createSpy('preventDefault'),
+      stopPropagation: jasmine.createSpy('stopPropagation'),
+      dataTransfer: {
+        dropEffect: 'copy',
+        getData: () => ''
+      }
+    } as unknown as DragEvent;
+
+    component.onSharedNavDragOver(dragEvent);
+    expect(component.isSharedNavDragOver()).toBeTrue();
+
+    component.onSharedNavDrop(dragEvent);
+    expect(component.isSharedNavDragOver()).toBeFalse();
+    expect(apiService.copyToShared).toHaveBeenCalledWith(['f-drag'], ['folder-drag'], null);
+  });
+
+  it('should open bulk copy to shared modal and perform copy on apply', () => {
+    fixture.detectChanges();
+    spyOn(apiService, 'getSharedFolders').and.returnValue(of({
+      folders: [{ id: 'sf-1', name: 'Shared 1' } as any],
+      files: [],
+      breadcrumbs: [],
+      quota: { allocatedBytes: 1000, usedBytes: 0, availableBytes: 1000 }
+    }));
+    spyOn(apiService, 'copyToShared').and.returnValue(of({ message: 'Success' }));
+
+    component.selectedFileIds.set(['file-1']);
+    component.openBulkCopyToSharedModal();
+
+    expect(apiService.getSharedFolders).toHaveBeenCalledWith(null);
+    expect(component.bulkCopyToSharedModalOpen()).toBeTrue();
+    expect(component.availableSharedFolders().length).toBe(1);
+
+    component.bulkCopyToSharedTargetFolderId = 'sf-1';
+    component.applyBulkCopyToShared();
+
+    expect(apiService.copyToShared).toHaveBeenCalledWith(['file-1'], [], 'sf-1');
+    expect(component.bulkCopyToSharedModalOpen()).toBeFalse();
   });
 
   it('should switch between Drive tabs', () => {
@@ -200,6 +264,18 @@ describe('DriveLayoutComponent', () => {
 
     expect(apiService.bulkMove).not.toHaveBeenCalled();
     expect((component as any).toastService.info).toHaveBeenCalledWith('Items are already in this folder');
+  });
+
+  it('should switch tab based on queryParams tab parameter', async () => {
+    const router = TestBed.inject(Router);
+    fixture.detectChanges();
+    expect(component.currentTab()).toBe('files');
+
+    await router.navigate([], { queryParams: { tab: 'favorites' } });
+    expect(component.currentTab()).toBe('favorites');
+
+    await router.navigate([], { queryParams: { tab: 'trash' } });
+    expect(component.currentTab()).toBe('trash');
   });
 });
 

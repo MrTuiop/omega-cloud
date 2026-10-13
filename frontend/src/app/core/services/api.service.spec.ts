@@ -146,6 +146,33 @@ describe('ApiService', () => {
     req.flush(null);
   });
 
+  it('should call copyToShared', () => {
+    service.copyToShared(['f-1'], ['folder-1'], 'target-shared-id').subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/copy-to-shared`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      fileIds: ['f-1'],
+      folderIds: ['folder-1'],
+      targetSharedFolderId: 'target-shared-id'
+    });
+    req.flush({ message: 'Files copied to shared space successfully.' });
+  });
+
+  it('should call saveToPersonal', () => {
+    service.saveToPersonal(['f-1'], undefined, 'target-personal-id').subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/shared/save-to-personal`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      fileIds: ['f-1'],
+      folderIds: [],
+      targetFolderId: 'target-personal-id'
+    });
+    req.flush({ message: 'Files saved to personal space successfully.' });
+  });
+
+
   it('should call getRecentFiles', () => {
     service.getRecentFiles(5).subscribe();
 
@@ -177,5 +204,21 @@ describe('ApiService', () => {
     const req = httpMock.expectOne(`${baseUrl}/files/search?q=report&scope=current&folderId=f-1`);
     expect(req.request.method).toBe('GET');
     req.flush({ folders: [], files: [], breadcrumbs: [] });
+  });
+
+  it('should call searchFiles with folderIds array', () => {
+    service.searchFiles('test', null, 'custom', ['f-1', 'f-2']).subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/files/search?q=test&scope=custom&folderIds=f-1&folderIds=f-2`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ folders: [], files: [], breadcrumbs: [] });
+  });
+
+  it('should call getFolderTree', () => {
+    service.getFolderTree().subscribe();
+
+    const req = httpMock.expectOne(`${baseUrl}/folders/tree`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ personalFolders: [], sharedFolders: [] });
   });
 });

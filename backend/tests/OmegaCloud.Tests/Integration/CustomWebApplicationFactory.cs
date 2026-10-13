@@ -44,6 +44,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         if (!db.StorageNodes.Any(n => n.Type == StorageNodeType.LocalDisk))
         {
+            var diskTelemetry = scope.ServiceProvider.GetService<IDiskTelemetryProvider>();
+            var diskInfo = diskTelemetry?.GetMasterDiskSpace()
+                ?? new DiskSpaceInfo(100L * 1024 * 1024 * 1024, 80L * 1024 * 1024 * 1024);
+
             var localNode = new StorageNode
             {
                 Id = DatabaseSeeder.MasterLocalStorageNodeId,
@@ -54,9 +58,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                 BaseUrl = null,
                 IsBehindNat = false,
                 Status = StorageNodeStatus.Online,
-                TotalSpaceBytes = 10_995_116_277_760L,
-                AvailableSpaceBytes = 10_995_116_277_760L,
-                MaxCapacityBytes = 10_995_116_277_760L,
+                TotalSpaceBytes = diskInfo.TotalBytes,
+                AvailableSpaceBytes = diskInfo.AvailableFreeBytes,
+                MaxCapacityBytes = diskInfo.TotalBytes,
                 LastHeartbeatAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
             };

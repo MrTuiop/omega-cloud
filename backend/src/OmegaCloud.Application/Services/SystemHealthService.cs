@@ -12,15 +12,17 @@ public class SystemHealthService : ISystemHealthService
 {
     private readonly IAppDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IDiskTelemetryProvider? _diskTelemetryProvider;
     private static readonly DateTime ProcessStartTime = Process.GetCurrentProcess().StartTime.ToUniversalTime();
     private static DateTime _lastCpuSampleTime = DateTime.UtcNow;
     private static TimeSpan _lastCpuUsage = Process.GetCurrentProcess().TotalProcessorTime;
     private static readonly object _cpuLock = new();
 
-    public SystemHealthService(IAppDbContext db, IConfiguration config)
+    public SystemHealthService(IAppDbContext db, IConfiguration config, IDiskTelemetryProvider? diskTelemetryProvider = null)
     {
         _db = db;
         _config = config;
+        _diskTelemetryProvider = diskTelemetryProvider;
     }
 
     public async Task<SystemHealthDto> GetSystemHealthAsync(CancellationToken ct = default)
@@ -83,25 +85,36 @@ public class SystemHealthService : ISystemHealthService
         }
 
         // Disk / Storage Metrics
-        var storagePath = _config["Storage:LocalRootPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data", "storage");
-        long storageTotal = 100L * 1024 * 1024 * 1024;
-        long storageFree = 80L * 1024 * 1024 * 1024;
-        try
+        long storageTotal;
+        long storageFree;
+        if (_diskTelemetryProvider != null)
         {
-            var root = Path.GetPathRoot(Path.GetFullPath(storagePath));
-            if (!string.IsNullOrEmpty(root))
+            var diskInfo = _diskTelemetryProvider.GetMasterDiskSpace();
+            storageTotal = diskInfo.TotalBytes;
+            storageFree = diskInfo.AvailableFreeBytes;
+        }
+        else
+        {
+            var storagePath = _config["Storage:LocalRootPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data", "storage");
+            storageTotal = 100L * 1024 * 1024 * 1024;
+            storageFree = 80L * 1024 * 1024 * 1024;
+            try
             {
-                var drive = new DriveInfo(root);
-                if (drive.IsReady)
+                var root = Path.GetPathRoot(Path.GetFullPath(storagePath));
+                if (!string.IsNullOrEmpty(root))
                 {
-                    storageTotal = drive.TotalSize;
-                    storageFree = drive.AvailableFreeSpace;
+                    var drive = new DriveInfo(root);
+                    if (drive.IsReady)
+                    {
+                        storageTotal = drive.TotalSize;
+                        storageFree = drive.AvailableFreeSpace;
+                    }
                 }
             }
-        }
-        catch
-        {
-            // DriveInfo fallback
+            catch
+            {
+                // DriveInfo fallback
+            }
         }
         var storageUsed = Math.Max(0, storageTotal - storageFree);
         var storagePercentage = storageTotal > 0 ? Math.Round((double)storageUsed / storageTotal * 100, 1) : 0;

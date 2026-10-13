@@ -103,7 +103,7 @@ public class FileService : IFileService
         {
             existingFile = await _dbContext.FileItems
                 .Include(f => f.StorageBlob)
-                .FirstOrDefaultAsync(f => f.UserId == userId && f.FolderId == request.FolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
+                .FirstOrDefaultAsync(f => f.UserId == userId && !f.IsShared && f.FolderId == request.FolderId && f.Name == validatedFileName && !f.IsDeleted, ct);
         }
 
         if (existingFile != null)
@@ -1075,6 +1075,516 @@ public class FileService : IFileService
         }
     }
 
+    public async Task CopyToSharedAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetSharedFolderId, Guid userId, CancellationToken ct = default)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new NotFoundException($"User with ID '{userId}' was not found.");
+
+        if (!user.IsActive)
+        {
+            throw new UnauthorizedException("User account is inactive.");
+        }
+
+        if (targetSharedFolderId.HasValue)
+        {
+            var destFolder = await _dbContext.Folders
+                .FirstOrDefaultAsync(f => f.Id == targetSharedFolderId.Value && f.IsShared && !f.IsDeleted, ct);
+            if (destFolder == null)
+            {
+                throw new NotFoundException($"Shared destination folder with ID '{targetSharedFolderId.Value}' was not found.");
+            }
+        }
+
+        var fileIdList = fileIds?.ToList() ?? new List<Guid>();
+        var folderIdList = folderIds?.ToList() ?? new List<Guid>();
+
+        if (fileIdList.Count == 0 && folderIdList.Count == 0)
+        {
+            return;
+        }
+
+        // 1. Direct personal files
+        var files = fileIdList.Count > 0
+            ? await _dbContext.FileItems
+                .Include(f => f.StorageBlob)
+                .Where(f => fileIdList.Contains(f.Id) && f.UserId == userId && !f.IsDeleted && !f.IsShared)
+                .ToListAsync(ct)
+            : new List<FileItem>();
+
+        // 2. Personal folders
+        var allUserFolders = await _dbContext.Folders
+            .Where(f => f.UserId == userId && !f.IsShared && !f.IsDeleted)
+            .ToListAsync(ct);
+
+        var topFolders = folderIdList.Count > 0
+            ? allUserFolders.Where(f => folderIdList.Contains(f.Id)).ToList()
+            : new List<Folder>();
+
+        if (topFolders.Count > 1)
+        {
+            var selectedIds = new HashSet<Guid>(topFolders.Select(f => f.Id));
+            topFolders = topFolders.Where(f =>
+            {
+                var curr = f.ParentFolderId;
+                while (curr.HasValue)
+                {
+                    if (selectedIds.Contains(curr.Value)) return false;
+                    var parent = allUserFolders.FirstOrDefault(p => p.Id == curr.Value);
+                    curr = parent?.ParentFolderId;
+                }
+                return true;
+            }).ToList();
+        }
+
+        var allCopiedFolderIds = new HashSet<Guid>();
+        foreach (var tf in topFolders)
+        {
+            allCopiedFolderIds.Add(tf.Id);
+            foreach (var descId in GetDescendantFolderIds(tf.Id, allUserFolders))
+            {
+                allCopiedFolderIds.Add(descId);
+            }
+        }
+
+        // Exclude any personal file that is already inside one of the folders being copied
+        if (allCopiedFolderIds.Count > 0)
+        {
+            files = files.Where(f => !f.FolderId.HasValue || !allCopiedFolderIds.Contains(f.FolderId.Value)).ToList();
+        }
+
+        // Names in target location for conflict resolution
+        var existingFileNames = await _dbContext.FileItems
+            .Where(f => f.IsShared && f.FolderId == targetSharedFolderId && !f.IsDeleted)
+            .Select(f => f.Name)
+            .ToListAsync(ct);
+        var fileNameSet = new HashSet<string>(existingFileNames, StringComparer.OrdinalIgnoreCase);
+
+        var existingFolderNames = await _dbContext.Folders
+            .Where(f => f.IsShared && f.ParentFolderId == targetSharedFolderId && !f.IsDeleted)
+            .Select(f => f.Name)
+            .ToListAsync(ct);
+        var folderNameSet = new HashSet<string>(existingFolderNames, StringComparer.OrdinalIgnoreCase);
+
+        var now = DateTime.UtcNow;
+        int copiedFilesCount = 0;
+        int copiedFoldersCount = 0;
+
+        foreach (var file in files)
+        {
+            var uniqueName = FileHelper.GenerateUniqueFileName(file.Name, n => fileNameSet.Contains(n));
+            fileNameSet.Add(uniqueName);
+
+            var newFile = new FileItem
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                FolderId = targetSharedFolderId,
+                StorageBlobId = file.StorageBlobId,
+                Name = uniqueName,
+                Extension = file.Extension,
+                MimeType = file.MimeType,
+                SizeBytes = file.SizeBytes,
+                IsShared = true,
+                IsDeleted = false,
+                IsFavorite = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            _dbContext.FileItems.Add(newFile);
+
+            var blob = file.StorageBlob ?? await _dbContext.StorageBlobs.FindAsync(new object[] { file.StorageBlobId }, ct);
+            if (blob != null)
+            {
+                blob.ReferenceCount++;
+            }
+
+            copiedFilesCount++;
+        }
+
+        if (topFolders.Count > 0)
+        {
+            var folderMapping = new Dictionary<Guid, Guid>();
+            var userFolderLookup = allUserFolders
+                .Where(f => f.ParentFolderId.HasValue)
+                .GroupBy(f => f.ParentFolderId!.Value)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var tf in topFolders)
+            {
+                var uniqueFolderName = FileHelper.GenerateUniqueFolderName(tf.Name, n => folderNameSet.Contains(n));
+                folderNameSet.Add(uniqueFolderName);
+
+                var newTopFolder = new Folder
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    ParentFolderId = targetSharedFolderId,
+                    Name = uniqueFolderName,
+                    Color = tf.Color,
+                    IsShared = true,
+                    IsDeleted = false,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                _dbContext.Folders.Add(newTopFolder);
+                folderMapping[tf.Id] = newTopFolder.Id;
+                copiedFoldersCount++;
+
+                var queue = new Queue<Guid>();
+                queue.Enqueue(tf.Id);
+
+                while (queue.Count > 0)
+                {
+                    var parentSourceId = queue.Dequeue();
+                    var mappedParentId = folderMapping[parentSourceId];
+
+                    if (userFolderLookup.TryGetValue(parentSourceId, out var childFolders))
+                    {
+                        foreach (var cf in childFolders)
+                        {
+                            var newChildFolder = new Folder
+                            {
+                                Id = Guid.NewGuid(),
+                                UserId = userId,
+                                ParentFolderId = mappedParentId,
+                                Name = cf.Name,
+                                Color = cf.Color,
+                                IsShared = true,
+                                IsDeleted = false,
+                                CreatedAt = now,
+                                UpdatedAt = now
+                            };
+
+                            _dbContext.Folders.Add(newChildFolder);
+                            folderMapping[cf.Id] = newChildFolder.Id;
+                            copiedFoldersCount++;
+                            queue.Enqueue(cf.Id);
+                        }
+                    }
+                }
+            }
+
+            var allCopiedSourceFolderIds = folderMapping.Keys.ToList();
+            var nestedFiles = await _dbContext.FileItems
+                .Include(f => f.StorageBlob)
+                .Where(f => f.UserId == userId && !f.IsShared && !f.IsDeleted && f.FolderId != null && allCopiedSourceFolderIds.Contains(f.FolderId.Value))
+                .ToListAsync(ct);
+
+            foreach (var nf in nestedFiles)
+            {
+                var mappedParentId = folderMapping[nf.FolderId!.Value];
+                var newFile = new FileItem
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    FolderId = mappedParentId,
+                    StorageBlobId = nf.StorageBlobId,
+                    Name = nf.Name,
+                    Extension = nf.Extension,
+                    MimeType = nf.MimeType,
+                    SizeBytes = nf.SizeBytes,
+                    IsShared = true,
+                    IsDeleted = false,
+                    IsFavorite = false,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                _dbContext.FileItems.Add(newFile);
+
+                var blob = nf.StorageBlob ?? await _dbContext.StorageBlobs.FindAsync(new object[] { nf.StorageBlobId }, ct);
+                if (blob != null)
+                {
+                    blob.ReferenceCount++;
+                }
+
+                copiedFilesCount++;
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        await _notifier.NotifyDirectoryChangedAsync(userId, targetSharedFolderId, "DirectoryChanged", null, ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                action: "FilesCopiedToShared",
+                resource: "Shared",
+                resourceId: targetSharedFolderId?.ToString(),
+                userId: userId,
+                username: user.Username,
+                ipAddress: null,
+                details: new { fileCount = copiedFilesCount, folderCount = copiedFoldersCount, targetSharedFolderId },
+                ct: ct);
+        }
+    }
+
+    public async Task SaveToPersonalAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetFolderId, Guid userId, CancellationToken ct = default)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new NotFoundException($"User with ID '{userId}' was not found.");
+
+        if (!user.IsActive)
+        {
+            throw new UnauthorizedException("User account is inactive.");
+        }
+
+        if (targetFolderId.HasValue)
+        {
+            var destFolder = await _dbContext.Folders
+                .FirstOrDefaultAsync(f => f.Id == targetFolderId.Value && f.UserId == userId && !f.IsShared && !f.IsDeleted, ct);
+            if (destFolder == null)
+            {
+                throw new NotFoundException($"Destination folder with ID '{targetFolderId.Value}' was not found.");
+            }
+        }
+
+        var fileIdList = fileIds?.ToList() ?? new List<Guid>();
+        var folderIdList = folderIds?.ToList() ?? new List<Guid>();
+
+        if (fileIdList.Count == 0 && folderIdList.Count == 0)
+        {
+            return;
+        }
+
+        // 1. Direct shared files
+        var files = fileIdList.Count > 0
+            ? await _dbContext.FileItems
+                .Include(f => f.StorageBlob)
+                .Where(f => fileIdList.Contains(f.Id) && f.IsShared && !f.IsDeleted)
+                .ToListAsync(ct)
+            : new List<FileItem>();
+
+        // 2. Shared folders
+        var allSharedFolders = await _dbContext.Folders
+            .Where(f => f.IsShared && !f.IsDeleted)
+            .ToListAsync(ct);
+
+        var topFolders = folderIdList.Count > 0
+            ? allSharedFolders.Where(f => folderIdList.Contains(f.Id)).ToList()
+            : new List<Folder>();
+
+        if (topFolders.Count > 1)
+        {
+            var selectedIds = new HashSet<Guid>(topFolders.Select(f => f.Id));
+            topFolders = topFolders.Where(f =>
+            {
+                var curr = f.ParentFolderId;
+                while (curr.HasValue)
+                {
+                    if (selectedIds.Contains(curr.Value)) return false;
+                    var parent = allSharedFolders.FirstOrDefault(p => p.Id == curr.Value);
+                    curr = parent?.ParentFolderId;
+                }
+                return true;
+            }).ToList();
+        }
+
+        var allCopiedSharedFolderIds = new HashSet<Guid>();
+        foreach (var tf in topFolders)
+        {
+            allCopiedSharedFolderIds.Add(tf.Id);
+            foreach (var descId in GetDescendantFolderIds(tf.Id, allSharedFolders))
+            {
+                allCopiedSharedFolderIds.Add(descId);
+            }
+        }
+
+        // Exclude any file that is already inside one of the shared folders being copied
+        if (allCopiedSharedFolderIds.Count > 0)
+        {
+            files = files.Where(f => !f.FolderId.HasValue || !allCopiedSharedFolderIds.Contains(f.FolderId.Value)).ToList();
+        }
+
+        var nestedFiles = allCopiedSharedFolderIds.Count > 0
+            ? await _dbContext.FileItems
+                .Include(f => f.StorageBlob)
+                .Where(f => f.IsShared && !f.IsDeleted && f.FolderId != null && allCopiedSharedFolderIds.Contains(f.FolderId.Value))
+                .ToListAsync(ct)
+            : new List<FileItem>();
+
+        // Check user quota
+        long totalRequiredBytes = files.Sum(f => f.SizeBytes) + nestedFiles.Sum(f => f.SizeBytes);
+
+        if (user.UsedQuotaBytes + totalRequiredBytes > user.AllocatedQuotaBytes)
+        {
+            var remainingQuota = Math.Max(0, user.AllocatedQuotaBytes - user.UsedQuotaBytes);
+            throw new ValidationException(
+                $"User quota exceeded. Available: {remainingQuota} bytes, Required: {totalRequiredBytes} bytes.");
+        }
+
+        // Names in target location for conflict resolution
+        var existingFileNames = await _dbContext.FileItems
+            .Where(f => !f.IsShared && f.UserId == userId && f.FolderId == targetFolderId && !f.IsDeleted)
+            .Select(f => f.Name)
+            .ToListAsync(ct);
+        var fileNameSet = new HashSet<string>(existingFileNames, StringComparer.OrdinalIgnoreCase);
+
+        var existingFolderNames = await _dbContext.Folders
+            .Where(f => !f.IsShared && f.UserId == userId && f.ParentFolderId == targetFolderId && !f.IsDeleted)
+            .Select(f => f.Name)
+            .ToListAsync(ct);
+        var folderNameSet = new HashSet<string>(existingFolderNames, StringComparer.OrdinalIgnoreCase);
+
+        var now = DateTime.UtcNow;
+        int copiedFilesCount = 0;
+        int copiedFoldersCount = 0;
+
+        foreach (var file in files)
+        {
+            var uniqueName = FileHelper.GenerateUniqueFileName(file.Name, n => fileNameSet.Contains(n));
+            fileNameSet.Add(uniqueName);
+
+            var newFile = new FileItem
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                FolderId = targetFolderId,
+                StorageBlobId = file.StorageBlobId,
+                Name = uniqueName,
+                Extension = file.Extension,
+                MimeType = file.MimeType,
+                SizeBytes = file.SizeBytes,
+                IsShared = false,
+                IsDeleted = false,
+                IsFavorite = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            _dbContext.FileItems.Add(newFile);
+
+            var blob = file.StorageBlob ?? await _dbContext.StorageBlobs.FindAsync(new object[] { file.StorageBlobId }, ct);
+            if (blob != null)
+            {
+                blob.ReferenceCount++;
+            }
+
+            copiedFilesCount++;
+        }
+
+        if (topFolders.Count > 0)
+        {
+            var folderMapping = new Dictionary<Guid, Guid>();
+            var sharedFolderLookup = allSharedFolders
+                .Where(f => f.ParentFolderId.HasValue)
+                .GroupBy(f => f.ParentFolderId!.Value)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var tf in topFolders)
+            {
+                var uniqueFolderName = FileHelper.GenerateUniqueFolderName(tf.Name, n => folderNameSet.Contains(n));
+                folderNameSet.Add(uniqueFolderName);
+
+                var newTopFolder = new Folder
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    ParentFolderId = targetFolderId,
+                    Name = uniqueFolderName,
+                    Color = tf.Color,
+                    IsShared = false,
+                    IsDeleted = false,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                _dbContext.Folders.Add(newTopFolder);
+                folderMapping[tf.Id] = newTopFolder.Id;
+                copiedFoldersCount++;
+
+                var queue = new Queue<Guid>();
+                queue.Enqueue(tf.Id);
+
+                while (queue.Count > 0)
+                {
+                    var parentSourceId = queue.Dequeue();
+                    var mappedParentId = folderMapping[parentSourceId];
+
+                    if (sharedFolderLookup.TryGetValue(parentSourceId, out var childFolders))
+                    {
+                        foreach (var cf in childFolders)
+                        {
+                            var newChildFolder = new Folder
+                            {
+                                Id = Guid.NewGuid(),
+                                UserId = userId,
+                                ParentFolderId = mappedParentId,
+                                Name = cf.Name,
+                                Color = cf.Color,
+                                IsShared = false,
+                                IsDeleted = false,
+                                CreatedAt = now,
+                                UpdatedAt = now
+                            };
+
+                            _dbContext.Folders.Add(newChildFolder);
+                            folderMapping[cf.Id] = newChildFolder.Id;
+                            copiedFoldersCount++;
+                            queue.Enqueue(cf.Id);
+                        }
+                    }
+                }
+            }
+
+            foreach (var nf in nestedFiles)
+            {
+                var mappedParentId = folderMapping[nf.FolderId!.Value];
+                var newFile = new FileItem
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    FolderId = mappedParentId,
+                    StorageBlobId = nf.StorageBlobId,
+                    Name = nf.Name,
+                    Extension = nf.Extension,
+                    MimeType = nf.MimeType,
+                    SizeBytes = nf.SizeBytes,
+                    IsShared = false,
+                    IsDeleted = false,
+                    IsFavorite = false,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                _dbContext.FileItems.Add(newFile);
+
+                var blob = nf.StorageBlob ?? await _dbContext.StorageBlobs.FindAsync(new object[] { nf.StorageBlobId }, ct);
+                if (blob != null)
+                {
+                    blob.ReferenceCount++;
+                }
+
+                copiedFilesCount++;
+            }
+        }
+
+        user.UsedQuotaBytes += totalRequiredBytes;
+        user.UpdatedAt = now;
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        await _notifier.NotifyDirectoryChangedAsync(userId, targetFolderId, "DirectoryChanged", null, ct);
+        await _notifier.NotifyQuotaUpdatedAsync(userId, user.UsedQuotaBytes, user.AllocatedQuotaBytes, ct);
+
+        if (_auditService != null)
+        {
+            await _auditService.LogAsync(
+                action: "FilesSavedToPersonal",
+                resource: "Files",
+                resourceId: targetFolderId?.ToString(),
+                userId: userId,
+                username: user.Username,
+                ipAddress: null,
+                details: new { fileCount = copiedFilesCount, folderCount = copiedFoldersCount, targetFolderId, totalBytes = totalRequiredBytes },
+                ct: ct);
+        }
+    }
+
+
     public async Task<IReadOnlyList<FileItemDto>> GetRecentFilesAsync(Guid userId, int limit = 10, CancellationToken ct = default)
     {
         var files = await _dbContext.FileItems
@@ -1087,28 +1597,60 @@ public class FileService : IFileService
         return files.Select(MapToFileDto).ToList();
     }
 
-    public async Task<OmegaCloud.Application.DTOs.Folders.FolderContentDto> SearchAsync(string query, Guid? folderId, string scope, Guid userId, CancellationToken ct = default)
+    public async Task<OmegaCloud.Application.DTOs.Folders.FolderContentDto> SearchAsync(
+        string query,
+        Guid? folderId,
+        string scope,
+        Guid userId,
+        Guid[]? folderIds = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
             return new OmegaCloud.Application.DTOs.Folders.FolderContentDto();
         }
 
-        query = query.Trim().ToLower();
-        var allFolders = await _dbContext.Folders
+        query = query.Trim().ToLowerInvariant();
+
+        IQueryable<Folder> foldersBaseQuery = _dbContext.Folders
             .AsNoTracking()
-            .Where(f => f.UserId == userId && !f.IsDeleted)
-            .ToListAsync(ct);
+            .Where(f => !f.IsDeleted);
+
+        if (scope.Equals("shared", StringComparison.OrdinalIgnoreCase))
+        {
+            foldersBaseQuery = foldersBaseQuery.Where(f => f.IsShared);
+        }
+        else if (scope.Equals("personal", StringComparison.OrdinalIgnoreCase))
+        {
+            foldersBaseQuery = foldersBaseQuery.Where(f => f.UserId == userId && !f.IsShared);
+        }
+        else
+        {
+            foldersBaseQuery = foldersBaseQuery.Where(f => f.UserId == userId || f.IsShared);
+        }
+
+        var allCandidateFolders = await foldersBaseQuery.ToListAsync(ct);
 
         List<Guid>? allowedFolderIds = null;
-        if (scope.Equals("current", StringComparison.OrdinalIgnoreCase) && folderId.HasValue)
+        if (folderIds != null && folderIds.Length > 0)
         {
-            allowedFolderIds = GetDescendantFolderIds(folderId.Value, allFolders);
+            allowedFolderIds = new List<Guid>();
+            foreach (var fId in folderIds)
+            {
+                allowedFolderIds.Add(fId);
+                var descendants = GetDescendantFolderIds(fId, allCandidateFolders);
+                allowedFolderIds.AddRange(descendants);
+            }
+            allowedFolderIds = allowedFolderIds.Distinct().ToList();
+        }
+        else if (scope.Equals("current", StringComparison.OrdinalIgnoreCase) && folderId.HasValue)
+        {
+            allowedFolderIds = GetDescendantFolderIds(folderId.Value, allCandidateFolders);
             allowedFolderIds.Add(folderId.Value);
         }
 
-        var matchingFolders = allFolders
-            .Where(f => f.Name.ToLower().Contains(query) && (allowedFolderIds == null || allowedFolderIds.Contains(f.Id)))
+        var matchingFolders = allCandidateFolders
+            .Where(f => f.Name.Contains(query, StringComparison.OrdinalIgnoreCase) && (allowedFolderIds == null || allowedFolderIds.Contains(f.Id)))
             .Select(f => new OmegaCloud.Application.DTOs.Folders.FolderDto
             {
                 Id = f.Id,
@@ -1122,9 +1664,22 @@ public class FileService : IFileService
             })
             .ToList();
 
-        var filesQuery = _dbContext.FileItems
+        IQueryable<FileItem> filesQuery = _dbContext.FileItems
             .AsNoTracking()
-            .Where(f => f.UserId == userId && !f.IsDeleted && f.Name.ToLower().Contains(query));
+            .Where(f => !f.IsDeleted && f.Name.ToLower().Contains(query));
+
+        if (scope.Equals("shared", StringComparison.OrdinalIgnoreCase))
+        {
+            filesQuery = filesQuery.Where(f => f.IsShared);
+        }
+        else if (scope.Equals("personal", StringComparison.OrdinalIgnoreCase))
+        {
+            filesQuery = filesQuery.Where(f => f.UserId == userId && !f.IsShared);
+        }
+        else
+        {
+            filesQuery = filesQuery.Where(f => f.UserId == userId || f.IsShared);
+        }
 
         if (allowedFolderIds != null)
         {
@@ -1145,22 +1700,33 @@ public class FileService : IFileService
 
     private static List<Guid> GetDescendantFolderIds(Guid folderId, List<Folder> allFolders)
     {
-        var result = new List<Guid>();
+        var descendants = new List<Guid>();
+        var visited = new HashSet<Guid> { folderId };
         var queue = new Queue<Guid>();
         queue.Enqueue(folderId);
+
+        var lookup = allFolders
+            .Where(f => f.ParentFolderId.HasValue)
+            .GroupBy(f => f.ParentFolderId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            var children = allFolders.Where(f => f.ParentFolderId == current).Select(f => f.Id);
-            foreach (var childId in children)
+            if (lookup.TryGetValue(current, out var children))
             {
-                result.Add(childId);
-                queue.Enqueue(childId);
+                foreach (var child in children)
+                {
+                    if (visited.Add(child.Id))
+                    {
+                        descendants.Add(child.Id);
+                        queue.Enqueue(child.Id);
+                    }
+                }
             }
         }
 
-        return result;
+        return descendants;
     }
 
     private static string ValidateFileName(string? name) => FileHelper.ValidateFileName(name);

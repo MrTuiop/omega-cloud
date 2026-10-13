@@ -13,4 +13,7 @@ public interface ISharedService
     Task DeleteSharedFileAsync(Guid fileId, Guid userId, string? userRole, CancellationToken ct = default);
     Task DeleteSharedFolderAsync(Guid folderId, Guid userId, string? userRole, CancellationToken ct = default);
     Task<FolderDto> CreateSharedFolderAsync(CreateFolderRequest request, Guid userId, CancellationToken ct = default);
+    Task CopyToSharedAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetSharedFolderId, Guid userId, CancellationToken ct = default);
+    Task SaveToPersonalAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetFolderId, Guid userId, CancellationToken ct = default);
 }
+

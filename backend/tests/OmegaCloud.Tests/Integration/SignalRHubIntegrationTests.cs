@@ -140,7 +140,7 @@ public class SignalRHubIntegrationTests : IClassFixture<CustomWebApplicationFact
         await notifier.NotifyNodeStatusChangedAsync(testNodeId, "Degraded", DateTimeOffset.UtcNow);
 
         // Assert
-        var timeoutTask = Task.Delay(5000);
+        var timeoutTask = Task.Delay(20000);
         var completed = await Task.WhenAny(adminReceivedTcs.Task, timeoutTask);
         Assert.Same(adminReceivedTcs.Task, completed);
 

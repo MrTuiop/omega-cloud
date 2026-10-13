@@ -18,6 +18,7 @@ public class NodeService : INodeService
     private readonly ILogger<NodeService> _logger;
     private readonly IRealtimeNotifier _notifier;
     private readonly IAuditService? _auditService;
+    private readonly IDiskTelemetryProvider? _diskTelemetryProvider;
 
     public NodeService(
         IAppDbContext dbContext,
@@ -26,7 +27,8 @@ public class NodeService : INodeService
         IDateTimeProvider dateTimeProvider,
         ILogger<NodeService> logger,
         IRealtimeNotifier? notifier = null,
-        IAuditService? auditService = null)
+        IAuditService? auditService = null,
+        IDiskTelemetryProvider? diskTelemetryProvider = null)
     {
         _dbContext = dbContext;
         _hmacSigner = hmacSigner;
@@ -35,6 +37,7 @@ public class NodeService : INodeService
         _logger = logger;
         _notifier = notifier ?? NullRealtimeNotifier.Instance;
         _auditService = auditService;
+        _diskTelemetryProvider = diskTelemetryProvider;
     }
 
     public async Task<RegisterNodeResponse> RegisterNodeAsync(RegisterNodeRequest request, CancellationToken ct = default)
@@ -263,6 +266,19 @@ public class NodeService : INodeService
             .OrderBy(n => n.CreatedAt)
             .ToListAsync(ct);
 
+        var localNode = nodes.FirstOrDefault(n => n.Type == StorageNodeType.LocalDisk);
+        if (localNode != null && _diskTelemetryProvider != null)
+        {
+            var telemetry = _diskTelemetryProvider.GetMasterDiskSpace();
+            if (telemetry.TotalBytes > 0)
+            {
+                localNode.TotalSpaceBytes = telemetry.TotalBytes;
+                localNode.AvailableSpaceBytes = telemetry.AvailableFreeBytes;
+                localNode.LastHeartbeatAt = now;
+                await _dbContext.SaveChangesAsync(ct);
+            }
+        }
+
         return nodes.Select(n => MapToDto(n, now)).ToList();
     }
 
@@ -271,6 +287,18 @@ public class NodeService : INodeService
         var node = await _dbContext.StorageNodes
             .FirstOrDefaultAsync(n => n.Id == id, ct)
             ?? throw new NotFoundException($"Storage node '{id}' was not found.");
+
+        if (node.Type == StorageNodeType.LocalDisk && _diskTelemetryProvider != null)
+        {
+            var telemetry = _diskTelemetryProvider.GetMasterDiskSpace();
+            if (telemetry.TotalBytes > 0)
+            {
+                node.TotalSpaceBytes = telemetry.TotalBytes;
+                node.AvailableSpaceBytes = telemetry.AvailableFreeBytes;
+                node.LastHeartbeatAt = _dateTimeProvider.UtcNow;
+                await _dbContext.SaveChangesAsync(ct);
+            }
+        }
 
         return MapToDto(node, _dateTimeProvider.UtcNow);
     }
@@ -499,6 +527,15 @@ public class NodeService : INodeService
             {
                 throw new ValidationException("Master local storage node cannot be deactivated.");
             }
+            if (request.MaxCapacityBytes.HasValue)
+            {
+                var physicalLimit = _diskTelemetryProvider?.GetMasterDiskSpace().TotalBytes ?? node.TotalSpaceBytes;
+                if (physicalLimit > 0 && request.MaxCapacityBytes.Value > physicalLimit)
+                {
+                    throw new ValidationException(
+                        $"Емкость локальной ноды ({request.MaxCapacityBytes.Value} байт) не может превышать физический размер диска ({physicalLimit} байт).");
+                }
+            }
         }
 
         var previousStatus = node.Status;
@@ -545,13 +582,26 @@ public class NodeService : INodeService
 
             var totalActiveCapacity = otherActiveCapacity + (node.IsActive ? node.MaxCapacityBytes : 0L);
 
-            var totalAllocatedQuota = await _dbContext.Users
-                .SumAsync(u => u.AllocatedQuotaBytes, ct);
+            var totalUsedBytes = await _dbContext.FileItems
+                .Where(f => !f.IsDeleted)
+                .Select(f => (long?)f.SizeBytes)
+                .SumAsync(ct) ?? 0L;
 
-            if (totalAllocatedQuota > totalActiveCapacity)
+            if (totalUsedBytes > totalActiveCapacity)
             {
                 throw new ValidationException(
-                    $"Cannot update node capacity or active status. Total user quotas ({totalAllocatedQuota} bytes) would exceed active storage nodes capacity ({totalActiveCapacity} bytes).");
+                    $"Невозможно уменьшить емкость нод ниже фактически занятого объема файлов ({totalUsedBytes} байт).");
+            }
+        }
+
+        if (node.Type == StorageNodeType.LocalDisk && _diskTelemetryProvider != null)
+        {
+            var telemetry = _diskTelemetryProvider.GetMasterDiskSpace();
+            if (telemetry.TotalBytes > 0)
+            {
+                node.TotalSpaceBytes = telemetry.TotalBytes;
+                node.AvailableSpaceBytes = telemetry.AvailableFreeBytes;
+                node.LastHeartbeatAt = _dateTimeProvider.UtcNow;
             }
         }
 
@@ -685,7 +735,7 @@ public class NodeService : INodeService
     private static StorageNodeDto MapToDto(StorageNode n, DateTime now)
     {
         var elapsed = (now - n.LastHeartbeatAt).TotalSeconds;
-        var isOnline = n.Status == StorageNodeStatus.Online && elapsed <= 60;
+        var isOnline = n.Status == StorageNodeStatus.Online && (n.Type == StorageNodeType.LocalDisk || elapsed <= 60);
 
         return new StorageNodeDto
         {
@@ -702,7 +752,7 @@ public class NodeService : INodeService
             DiskStatus = n.DiskStatus,
             LatencyMs = n.LatencyMs,
             LastHeartbeatAt = n.LastHeartbeatAt,
-            SecondsSinceLastHeartbeat = Math.Max(0, Math.Round(elapsed, 1)),
+            SecondsSinceLastHeartbeat = n.Type == StorageNodeType.LocalDisk ? 0 : Math.Max(0, Math.Round(elapsed, 1)),
             IsOnline = isOnline,
             IsActive = n.IsActive,
             CreatedAt = n.CreatedAt

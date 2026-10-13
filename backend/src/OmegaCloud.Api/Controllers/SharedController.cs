@@ -223,6 +223,39 @@ public class SharedController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("save-to-personal")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SaveToPersonal(
+        [FromBody] SaveToPersonalRequest request,
+        CancellationToken ct = default)
+    {
+        var userId = GetCurrentUserId();
+        var targetFolderId = request.TargetFolderId ?? request.TargetSharedFolderId;
+        await _sharedService.SaveToPersonalAsync(request.FileIds, request.FolderIds, targetFolderId, userId, ct);
+        return Ok(new { message = "Files saved to personal space successfully." });
+    }
+
+    [HttpPost("copy-to-shared")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CopyToShared(
+        [FromBody] CopyToSharedRequest request,
+        CancellationToken ct = default)
+    {
+        var userId = GetCurrentUserId();
+        var targetFolderId = request.TargetSharedFolderId ?? request.TargetFolderId;
+        await _sharedService.CopyToSharedAsync(request.FileIds, request.FolderIds, targetFolderId, userId, ct);
+        return Ok(new { message = "Files copied to shared space successfully." });
+    }
+
+
     private Guid GetCurrentUserId()
     {
         return _currentUser.UserId ?? throw new UnauthorizedException("User is not authenticated.");

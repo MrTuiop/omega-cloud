@@ -98,6 +98,29 @@ public class FolderService : IFolderService
         };
     }
 
+    public async Task<FolderTreeResponseDto> GetFolderTreeAsync(Guid userId, CancellationToken ct = default)
+    {
+        var personalFolders = await _dbContext.Folders
+            .AsNoTracking()
+            .Where(f => f.UserId == userId && !f.IsShared && !f.IsDeleted)
+            .OrderBy(f => f.Name)
+            .Select(f => MapToDto(f))
+            .ToListAsync(ct);
+
+        var sharedFolders = await _dbContext.Folders
+            .AsNoTracking()
+            .Where(f => f.IsShared && !f.IsDeleted)
+            .OrderBy(f => f.Name)
+            .Select(f => MapToDto(f))
+            .ToListAsync(ct);
+
+        return new FolderTreeResponseDto
+        {
+            PersonalFolders = personalFolders,
+            SharedFolders = sharedFolders
+        };
+    }
+
     public async Task<FolderDto> CreateFolderAsync(CreateFolderRequest request, Guid userId, CancellationToken ct = default)
     {
         var validatedName = ValidateFolderName(request.Name);

@@ -79,6 +79,10 @@ export class ApiService {
     return this.http.get<FolderContent>(`${this.baseUrl}/folders`);
   }
 
+  getFolderTree(): Observable<{ personalFolders: FolderItem[]; sharedFolders: FolderItem[] }> {
+    return this.http.get<{ personalFolders: FolderItem[]; sharedFolders: FolderItem[] }>(`${this.baseUrl}/folders/tree`);
+  }
+
   getFolderContent(folderId: string): Observable<FolderContent> {
     return this.http.get<FolderContent>(`${this.baseUrl}/folders/${folderId}`);
   }
@@ -132,6 +136,23 @@ export class ApiService {
     });
   }
 
+  copyToShared(fileIds?: string[], folderIds?: string[], targetSharedFolderId?: string | null): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.baseUrl}/files/copy-to-shared`, {
+      fileIds: fileIds ?? [],
+      folderIds: folderIds ?? [],
+      targetSharedFolderId: targetSharedFolderId || null
+    });
+  }
+
+  saveToPersonal(fileIds?: string[], folderIds?: string[], targetFolderId?: string | null): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.baseUrl}/shared/save-to-personal`, {
+      fileIds: fileIds ?? [],
+      folderIds: folderIds ?? [],
+      targetFolderId: targetFolderId || null
+    });
+  }
+
+
   getDownloadUrl(fileId: string): string {
     return `${this.baseUrl}/files/${fileId}/download`;
   }
@@ -141,12 +162,22 @@ export class ApiService {
     return this.http.get<FileItem[]>(`${this.baseUrl}/files/recent`, { params });
   }
 
-  searchFiles(query: string, folderId?: string | null, scope: 'everywhere' | 'current' = 'everywhere'): Observable<FolderContent> {
+  searchFiles(
+    query: string,
+    folderId?: string | null,
+    scope: string = 'everywhere',
+    folderIds?: string[]
+  ): Observable<FolderContent> {
     let params = new HttpParams()
       .set('q', query)
       .set('scope', scope);
     if (folderId) {
       params = params.set('folderId', folderId);
+    }
+    if (folderIds && folderIds.length > 0) {
+      for (const fId of folderIds) {
+        params = params.append('folderIds', fId);
+      }
     }
     return this.http.get<FolderContent>(`${this.baseUrl}/files/search`, { params });
   }

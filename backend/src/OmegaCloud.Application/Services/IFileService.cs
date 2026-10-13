@@ -17,6 +17,9 @@ public interface IFileService
     Task<FileDownloadResult> DownloadFilesZipAsync(IEnumerable<Guid> fileIds, IEnumerable<Guid>? folderIds, Guid userId, CancellationToken ct = default);
     Task BulkDeleteAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid userId, CancellationToken ct = default);
     Task BulkMoveAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetFolderId, Guid userId, CancellationToken ct = default);
+    Task CopyToSharedAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetSharedFolderId, Guid userId, CancellationToken ct = default);
+    Task SaveToPersonalAsync(IEnumerable<Guid>? fileIds, IEnumerable<Guid>? folderIds, Guid? targetFolderId, Guid userId, CancellationToken ct = default);
     Task<IReadOnlyList<FileItemDto>> GetRecentFilesAsync(Guid userId, int limit = 10, CancellationToken ct = default);
-    Task<OmegaCloud.Application.DTOs.Folders.FolderContentDto> SearchAsync(string query, Guid? folderId, string scope, Guid userId, CancellationToken ct = default);
+    Task<OmegaCloud.Application.DTOs.Folders.FolderContentDto> SearchAsync(string query, Guid? folderId, string scope, Guid userId, Guid[]? folderIds = null, CancellationToken ct = default);
 }
+

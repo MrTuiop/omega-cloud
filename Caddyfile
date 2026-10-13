@@ -46,9 +46,15 @@
 
         # Долгосрочное кэширование хешированных статических ассетов
         @static {
-            path *.js *.css *.woff2 *.woff *.svg *.png *.jpg *.jpeg *.ico *.webp
+            path *.js *.css *.woff2 *.woff *.svg *.webp
         }
         header @static Cache-Control "public, max-age=31536000, immutable"
+
+        # Иконки и фавиконы (кэширование с обязательной валидацией)
+        @icons {
+            path /favicon.ico /favicon.png *.ico *.png *.jpg *.jpeg
+        }
+        header @icons Cache-Control "public, max-age=86400, must-revalidate"
     }
 
     # Сжатие Zstandard / Gzip для текстовых ресурсов

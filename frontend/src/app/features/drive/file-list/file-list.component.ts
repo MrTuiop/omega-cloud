@@ -1,9 +1,10 @@
-import { Component, Input, Output, EventEmitter, signal } from '@angular/core';
+import { Component, Input, Output, EventEmitter, signal, inject, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FolderItem, FileItem } from '../../../core/models/file.models';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { getFileTypeInfo } from '../../../shared/utils/file-icons';
+import { DragStateService } from '../../../core/services/drag-state.service';
 
 type SortColumn = 'name' | 'size' | 'updatedAt';
 type SortDirection = 'asc' | 'desc';
@@ -15,6 +16,7 @@ type SortDirection = 'asc' | 'desc';
   template: `
     <div
       class="list-container"
+      [class.list-container--dragging]="dragState.isDragging()"
       (contextmenu)="onContainerContextMenu($event)"
       (click)="onContainerClick($event)"
     >
@@ -22,6 +24,16 @@ type SortDirection = 'asc' | 'desc';
         <table class="glass-table">
           <thead>
             <tr>
+              <th class="col-checkbox" (click)="$event.stopPropagation()">
+                <input
+                  type="checkbox"
+                  class="glass-checkbox"
+                  [checked]="isAllSelected()"
+                  [indeterminate]="isPartiallySelected()"
+                  (change)="toggleSelectAll($event)"
+                  title="Select all"
+                />
+              </th>
               <th class="col-name" (click)="setSort('name')">
                 <div class="th-content">
                   <span>Name</span>
@@ -60,16 +72,24 @@ type SortDirection = 'asc' | 'desc';
                 [attr.data-type]="'folder'"
                 [class.table-row--selected]="isFolderSelected(folder.id)"
                 [class.table-row--dragover]="dragOverFolderId === folder.id"
-                [draggable]="!isTouchDevice"
+                [draggable]="true"
                 (click)="onFolderClick($event, folder)"
                 (dblclick)="openFolder.emit(folder)"
                 (contextmenu)="onFolderContextMenu($event, folder)"
                 (dragstart)="onFolderDragStart($event, folder)"
                 (dragover)="onFolderDragOver($event, folder)"
-                (dragleave)="onFolderDragLeave(folder)"
+                (dragleave)="onFolderDragLeave($event, folder)"
                 (drop)="onFolderDrop($event, folder)"
-                (touchstart)="onTouchStart()"
               >
+                <td class="col-checkbox" (click)="$event.stopPropagation()">
+                  <input
+                    type="checkbox"
+                    class="glass-checkbox"
+                    [checked]="isFolderSelected(folder.id)"
+                    (change)="onRowCheckboxChange($event, 'folder', folder.id)"
+                    title="Select folder"
+                  />
+                </td>
                 <td class="col-name">
                   <div class="row-title">
                     <span class="row-icon folder-icon" [style.color]="folder.color || 'var(--omega-accent)'">
@@ -99,13 +119,21 @@ type SortDirection = 'asc' | 'desc';
                 [attr.data-id]="file.id"
                 [attr.data-type]="'file'"
                 [class.table-row--selected]="isFileSelected(file.id)"
-                [draggable]="!isTouchDevice"
+                [draggable]="true"
                 (click)="onFileClick($event, file)"
                 (dblclick)="onFileDoubleClick(file)"
                 (contextmenu)="onFileContextMenu($event, file)"
                 (dragstart)="onFileDragStart($event, file)"
-                (touchstart)="onTouchStart()"
               >
+                <td class="col-checkbox" (click)="$event.stopPropagation()">
+                  <input
+                    type="checkbox"
+                    class="glass-checkbox"
+                    [checked]="isFileSelected(file.id)"
+                    (change)="onRowCheckboxChange($event, 'file', file.id)"
+                    title="Select file"
+                  />
+                </td>
                 <td class="col-name">
                   <div class="row-title">
                     <span class="file-mini-badge" [style.background-color]="getFileBadgeColor(file)">
@@ -139,10 +167,18 @@ type SortDirection = 'asc' | 'desc';
               </tr>
             }
 
+            <!-- Empty State -->
             @if (folders.length === 0 && files.length === 0) {
               <tr>
-                <td colspan="6" class="empty-cell">
-                  This folder is empty
+                <td colspan="7" class="empty-cell">
+                  <div class="empty-state">
+                    <div class="empty-icon">
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                    </div>
+                    <span>This folder is empty</span>
+                  </div>
                 </td>
               </tr>
             }
@@ -155,12 +191,16 @@ type SortDirection = 'asc' | 'desc';
     @use 'styles/glass' as *;
 
     .list-container {
-      display: flex;
-      flex-direction: column;
       width: 100%;
+      height: 100%;
       user-select: none;
       -webkit-user-select: none;
-      min-height: 100%;
+
+      &--dragging {
+        .table-row * {
+          pointer-events: none !important;
+        }
+      }
     }
 
     .table-wrapper {
@@ -209,6 +249,66 @@ type SortDirection = 'asc' | 'desc';
       }
     }
 
+    .col-checkbox {
+      width: 44px;
+      padding: 10px 12px 10px 16px !important;
+      text-align: center;
+      vertical-align: middle;
+      cursor: default !important;
+    }
+
+    .glass-checkbox {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1.5px solid var(--omega-glass-border, rgba(255, 255, 255, 0.4));
+      background: rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      vertical-align: middle;
+
+      &:hover {
+        border-color: var(--omega-accent);
+        background: rgba(0, 113, 227, 0.15);
+      }
+
+      &:checked {
+        background: var(--omega-accent);
+        border-color: var(--omega-accent);
+
+        &::after {
+          content: '';
+          display: block;
+          width: 5px;
+          height: 9px;
+          border: solid #ffffff;
+          border-width: 0 2px 2px 0;
+          transform: rotate(45deg);
+          margin-bottom: 2px;
+        }
+      }
+
+      &:indeterminate {
+        background: var(--omega-accent);
+        border-color: var(--omega-accent);
+
+        &::after {
+          content: '';
+          display: block;
+          width: 8px;
+          height: 2px;
+          background: #ffffff;
+          border-radius: 1px;
+        }
+      }
+    }
+
     .table-row {
       border-bottom: 1px solid var(--omega-glass-border-subtle);
       transition: background 0.15s ease, box-shadow 0.15s ease;
@@ -232,6 +332,16 @@ type SortDirection = 'asc' | 'desc';
       &--dragover {
         background: var(--omega-accent-subtle) !important;
         box-shadow: inset 0 0 0 2px var(--omega-accent), 0 0 16px rgba(0, 113, 227, 0.4) !important;
+
+        .row-title,
+        .row-icon,
+        .item-name,
+        .file-mini-badge,
+        .kind-tag,
+        .col-size,
+        .col-date {
+          pointer-events: none !important;
+        }
       }
 
       td {
@@ -328,10 +438,22 @@ type SortDirection = 'asc' | 'desc';
     }
 
     .empty-cell {
-      padding: 40px !important;
+      padding: 48px 16px !important;
       text-align: center;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
       color: var(--omega-text-muted);
       font-size: 14px;
+
+      .empty-icon {
+        color: var(--omega-text-secondary);
+      }
     }
   `]
 })
@@ -357,8 +479,11 @@ export class FileListComponent {
   @Output() workspaceContextMenu = new EventEmitter<MouseEvent>();
   @Output() emptySpaceClick = new EventEmitter<MouseEvent>();
 
-  sortCol = signal<SortColumn>('name');
-  sortDir = signal<SortDirection>('asc');
+  readonly dragState = inject(DragStateService);
+
+  readonly sortCol = signal<SortColumn>('name');
+  readonly sortDir = signal<SortDirection>('asc');
+
   dragOverFolderId: string | null = null;
   isTouchDevice = false;
 
@@ -372,38 +497,67 @@ export class FileListComponent {
     return this.selectedFileIds.includes(id) || this.selectedFileId === id;
   }
 
-  onTouchStart(): void {
-    this.isTouchDevice = true;
+  isAllSelected(): boolean {
+    const total = this.folders.length + this.files.length;
+    if (total === 0) return false;
+    const selectedCount = this.folders.filter(f => this.isFolderSelected(f.id)).length +
+      this.files.filter(f => this.isFileSelected(f.id)).length;
+    return selectedCount === total;
   }
 
-  get sortedFolders(): FolderItem[] {
-    const list = [...this.folders];
-    const dir = this.sortDir() === 'asc' ? 1 : -1;
-    return list.sort((a, b) => {
-      if (this.sortCol() === 'name') return (a.name || '').localeCompare(b.name || '') * dir;
-      if (this.sortCol() === 'updatedAt') return (new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime()) * dir;
-      return 0;
-    });
+  isPartiallySelected(): boolean {
+    const total = this.folders.length + this.files.length;
+    if (total === 0) return false;
+    const selectedCount = this.folders.filter(f => this.isFolderSelected(f.id)).length +
+      this.files.filter(f => this.isFileSelected(f.id)).length;
+    return selectedCount > 0 && selectedCount < total;
   }
 
-  get sortedFiles(): FileItem[] {
-    const list = [...this.files];
-    const dir = this.sortDir() === 'asc' ? 1 : -1;
-    return list.sort((a, b) => {
-      if (this.sortCol() === 'name') return (a.name || '').localeCompare(b.name || '') * dir;
-      if (this.sortCol() === 'size') return ((a.sizeBytes || 0) - (b.sizeBytes || 0)) * dir;
-      if (this.sortCol() === 'updatedAt') return (new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime()) * dir;
-      return 0;
-    });
-  }
-
-  setSort(col: SortColumn): void {
-    if (this.sortCol() === col) {
-      this.sortDir.update(d => (d === 'asc' ? 'desc' : 'asc'));
+  toggleSelectAll(event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    if (checked) {
+      this.selectedFolderIds = this.folders.map(f => f.id);
+      this.selectedFileIds = this.files.map(f => f.id);
     } else {
-      this.sortCol.set(col);
-      this.sortDir.set('asc');
+      this.selectedFolderIds = [];
+      this.selectedFileIds = [];
     }
+    this.selectedFolderId = null;
+    this.selectedFileId = null;
+    this.selectionChange.emit({
+      folderIds: this.selectedFolderIds,
+      fileIds: this.selectedFileIds
+    });
+  }
+
+  onRowCheckboxChange(event: Event, type: 'folder' | 'file', id: string): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    let nextFolderIds = this.selectedFolderIds.length > 0
+      ? [...this.selectedFolderIds]
+      : (this.selectedFolderId ? [this.selectedFolderId] : []);
+    let nextFileIds = this.selectedFileIds.length > 0
+      ? [...this.selectedFileIds]
+      : (this.selectedFileId ? [this.selectedFileId] : []);
+
+    if (type === 'folder') {
+      nextFolderIds = checked
+        ? (nextFolderIds.includes(id) ? nextFolderIds : [...nextFolderIds, id])
+        : nextFolderIds.filter(fId => fId !== id);
+    } else {
+      nextFileIds = checked
+        ? (nextFileIds.includes(id) ? nextFileIds : [...nextFileIds, id])
+        : nextFileIds.filter(fId => fId !== id);
+    }
+
+    this.selectedFolderIds = nextFolderIds;
+    this.selectedFileIds = nextFileIds;
+    this.selectedFolderId = nextFolderIds.length === 1 && nextFileIds.length === 0 ? nextFolderIds[0] : null;
+    this.selectedFileId = nextFileIds.length === 1 && nextFolderIds.length === 0 ? nextFileIds[0] : null;
+
+    this.selectionChange.emit({
+      folderIds: nextFolderIds,
+      fileIds: nextFileIds
+    });
   }
 
   getFileBadge(file: FileItem): string {
@@ -412,6 +566,36 @@ export class FileListComponent {
 
   getFileBadgeColor(file: FileItem): string {
     return getFileTypeInfo(file.extension, file.mimeType).color;
+  }
+
+  setSort(column: SortColumn): void {
+    if (this.sortCol() === column) {
+      this.sortDir.set(this.sortDir() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortCol.set(column);
+      this.sortDir.set('asc');
+    }
+  }
+
+  get sortedFolders(): FolderItem[] {
+    const col = this.sortCol();
+    const dir = this.sortDir() === 'asc' ? 1 : -1;
+    return [...this.folders].sort((a, b) => {
+      if (col === 'name') return a.name.localeCompare(b.name) * dir;
+      if (col === 'updatedAt') return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * dir;
+      return 0;
+    });
+  }
+
+  get sortedFiles(): FileItem[] {
+    const col = this.sortCol();
+    const dir = this.sortDir() === 'asc' ? 1 : -1;
+    return [...this.files].sort((a, b) => {
+      if (col === 'name') return a.name.localeCompare(b.name) * dir;
+      if (col === 'size') return ((a.sizeBytes || 0) - (b.sizeBytes || 0)) * dir;
+      if (col === 'updatedAt') return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * dir;
+      return 0;
+    });
   }
 
   onFolderClick(event: MouseEvent, folder: FolderItem): void {
@@ -539,12 +723,22 @@ export class FileListComponent {
     this.fileContextMenu.emit({ event, file });
   }
 
+  @HostListener('document:dragend')
+  onDocumentDragEnd(): void {
+    this.dragState.endDrag();
+    this.dragOverFolderId = null;
+  }
+
   onFolderDragStart(event: DragEvent, folder: FolderItem): void {
     if (!this.isFolderSelected(folder.id)) {
       this.selectedFolderIds = [folder.id];
       this.selectedFileIds = [];
       this.selectionChange.emit({ folderIds: [folder.id], fileIds: [] });
     }
+    this.dragState.startDrag({
+      folderIds: this.selectedFolderIds,
+      fileIds: this.selectedFileIds
+    });
     if (event.dataTransfer) {
       event.dataTransfer.setData('application/json', JSON.stringify({
         folderIds: this.selectedFolderIds,
@@ -561,6 +755,11 @@ export class FileListComponent {
       this.selectedFolderIds = [];
       this.selectionChange.emit({ folderIds: [], fileIds: [file.id] });
     }
+    this.dragState.startDrag({
+      folderIds: this.selectedFolderIds,
+      fileIds: this.selectedFileIds,
+      fileId: file.id
+    });
     if (event.dataTransfer) {
       event.dataTransfer.setData('application/json', JSON.stringify({
         folderIds: this.selectedFolderIds,
@@ -572,20 +771,29 @@ export class FileListComponent {
   }
 
   onFolderDragOver(event: DragEvent, folder: FolderItem): void {
-    if (this.selectedFolderIds.includes(folder.id)) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dragData = this.dragState.getDragData();
+    const currentFolderIds = dragData?.folderIds || this.selectedFolderIds;
+    if (currentFolderIds.includes(folder.id)) {
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = 'none';
       }
       return;
     }
-    event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'move';
     }
     this.dragOverFolderId = folder.id;
   }
 
-  onFolderDragLeave(folder: FolderItem): void {
+  onFolderDragLeave(event: DragEvent, folder: FolderItem): void {
+    const currentTarget = event.currentTarget as HTMLElement;
+    const relatedTarget = event.relatedTarget as HTMLElement;
+    if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+      return;
+    }
     if (this.dragOverFolderId === folder.id) {
       this.dragOverFolderId = null;
     }
@@ -593,28 +801,42 @@ export class FileListComponent {
 
   onFolderDrop(event: DragEvent, targetFolder: FolderItem): void {
     event.preventDefault();
+    event.stopPropagation();
     this.dragOverFolderId = null;
-    if (this.selectedFolderIds.includes(targetFolder.id)) {
-      return;
-    }
-    if (event.dataTransfer) {
+
+    const dragData = this.dragState.getDragData();
+    let folderIds: string[] = dragData?.folderIds ? [...dragData.folderIds] : [];
+    let fileIds: string[] = dragData?.fileIds ? [...dragData.fileIds] : [];
+    let fileId: string | undefined = dragData?.fileId || undefined;
+
+    if (event.dataTransfer && folderIds.length === 0 && fileIds.length === 0 && !fileId) {
       const dataStr = event.dataTransfer.getData('application/json');
       if (dataStr) {
         try {
           const data = JSON.parse(dataStr);
-          if (data.folderIds && data.folderIds.includes(targetFolder.id)) {
-            return;
-          }
-          this.folderDrop.emit({
-            targetFolder,
-            fileId: data.fileId || (data.fileIds && data.fileIds.length > 0 ? data.fileIds[0] : undefined),
-            fileIds: data.fileIds || (data.fileId ? [data.fileId] : []),
-            folderIds: data.folderIds || []
-          });
+          folderIds = data.folderIds || [];
+          fileIds = data.fileIds || (data.fileId ? [data.fileId] : []);
+          fileId = data.fileId || (fileIds.length > 0 ? fileIds[0] : undefined);
         } catch {
           // Ignore
         }
       }
     }
+
+    if (folderIds.includes(targetFolder.id)) {
+      this.dragState.endDrag();
+      return;
+    }
+
+    if (folderIds.length > 0 || fileIds.length > 0 || fileId) {
+      this.folderDrop.emit({
+        targetFolder,
+        fileId: fileId || (fileIds.length > 0 ? fileIds[0] : undefined),
+        fileIds: fileIds.length > 0 ? fileIds : (fileId ? [fileId] : []),
+        folderIds
+      });
+    }
+
+    this.dragState.endDrag();
   }
 }

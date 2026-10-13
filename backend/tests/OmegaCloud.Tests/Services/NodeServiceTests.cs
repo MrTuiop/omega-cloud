@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OmegaCloud.Application.Common.Exceptions;
+using OmegaCloud.Application.Common.Interfaces;
 using OmegaCloud.Application.DTOs.Nodes;
 using OmegaCloud.Application.Services;
 using OmegaCloud.Domain.Entities;
@@ -39,14 +40,15 @@ public class NodeServiceTests
         return db;
     }
 
-    private NodeService CreateService(AppDbContext db)
+    private NodeService CreateService(AppDbContext db, IDiskTelemetryProvider? diskTelemetry = null)
     {
         return new NodeService(
             db,
             _hmacSigner,
             _gateway,
             _dateTimeProvider,
-            NullLogger<NodeService>.Instance);
+            NullLogger<NodeService>.Instance,
+            diskTelemetryProvider: diskTelemetry);
     }
 
     [Fact]
@@ -563,5 +565,221 @@ public class NodeServiceTests
 
         var inDb = await db.StorageNodes.FindAsync(localNode.Id);
         Assert.Equal(0, inDb!.LatencyMs);
+    }
+
+    private class FakeDiskTelemetryProvider : IDiskTelemetryProvider
+    {
+        private readonly DiskSpaceInfo _info;
+        public FakeDiskTelemetryProvider(long total, long available) => _info = new DiskSpaceInfo(total, available);
+        public DiskSpaceInfo GetMasterDiskSpace() => _info;
+    }
+
+    [Fact]
+    public async Task GetAllNodesAsync_LocalNode_DynamicallyUpdatesFromDiskTelemetry()
+    {
+        using var db = CreateDbContext();
+        var telemetry = new FakeDiskTelemetryProvider(500_000_000_000L, 200_000_000_000L);
+        var service = CreateService(db, telemetry);
+
+        var localNode = new StorageNode
+        {
+            Id = Guid.NewGuid(),
+            Name = "Master Local",
+            Type = StorageNodeType.LocalDisk,
+            Status = StorageNodeStatus.Online,
+            TotalSpaceBytes = 100,
+            AvailableSpaceBytes = 50,
+            MaxCapacityBytes = 500_000_000_000L
+        };
+        db.StorageNodes.Add(localNode);
+        await db.SaveChangesAsync();
+
+        var nodes = await service.GetAllNodesAsync();
+        var returned = Assert.Single(nodes);
+        Assert.Equal(500_000_000_000L, returned.TotalSpaceBytes);
+        Assert.Equal(200_000_000_000L, returned.AvailableSpaceBytes);
+
+        var inDb = await db.StorageNodes.FindAsync(localNode.Id);
+        Assert.Equal(500_000_000_000L, inDb!.TotalSpaceBytes);
+        Assert.Equal(200_000_000_000L, inDb.AvailableSpaceBytes);
+    }
+
+    [Fact]
+    public async Task UpdateNodeAsync_LocalNode_CapacityExceedingPhysicalDisk_ThrowsValidationException()
+    {
+        using var db = CreateDbContext();
+        var telemetry = new FakeDiskTelemetryProvider(500_000_000_000L, 200_000_000_000L);
+        var service = CreateService(db, telemetry);
+
+        var localNode = new StorageNode
+        {
+            Id = Guid.NewGuid(),
+            Name = "Master Local",
+            Type = StorageNodeType.LocalDisk,
+            Status = StorageNodeStatus.Online,
+            MaxCapacityBytes = 400_000_000_000L
+        };
+        db.StorageNodes.Add(localNode);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+            service.UpdateNodeAsync(localNode.Id, new UpdateStorageNodeRequest
+            {
+                MaxCapacityBytes = 600_000_000_000L
+            }));
+
+        Assert.Contains("не может превышать физический размер диска", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateNodeAsync_CapacityBelowActualUsedBytes_ThrowsValidationException()
+    {
+        using var db = CreateDbContext();
+        var service = CreateService(db);
+
+        var node = new StorageNode
+        {
+            Id = Guid.NewGuid(),
+            Name = "Daemon-Node",
+            Type = StorageNodeType.RemoteDaemon,
+            Status = StorageNodeStatus.Online,
+            MaxCapacityBytes = 100_000_000L,
+            IsActive = true
+        };
+        db.StorageNodes.Add(node);
+
+        var file = new FileItem
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "used.dat",
+            StorageBlobId = Guid.NewGuid(),
+            SizeBytes = 50_000_000L,
+            MimeType = "application/octet-stream",
+            Extension = ".dat",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            IsDeleted = false
+        };
+        db.FileItems.Add(file);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+            service.UpdateNodeAsync(node.Id, new UpdateStorageNodeRequest
+            {
+                MaxCapacityBytes = 20_000_000L
+            }));
+
+        Assert.Contains("Невозможно уменьшить емкость нод ниже фактически занятого объема файлов", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateNodeAsync_WithOversoldQuotas_SucceedsWhenFilesFit()
+    {
+        using var db = CreateDbContext();
+        var service = CreateService(db);
+
+        var node = new StorageNode
+        {
+            Id = Guid.NewGuid(),
+            Name = "Daemon-Node",
+            Type = StorageNodeType.RemoteDaemon,
+            Status = StorageNodeStatus.Online,
+            MaxCapacityBytes = 100_000_000L,
+            IsActive = true
+        };
+        db.StorageNodes.Add(node);
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "oversold_user",
+            Email = "oversold@test.local",
+            PasswordHash = "hash",
+            Role = UserRole.User,
+            AllocatedQuotaBytes = 200_000_000L,
+            UsedQuotaBytes = 5_000_000L,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+
+        var file = new FileItem
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Name = "small.dat",
+            StorageBlobId = Guid.NewGuid(),
+            SizeBytes = 5_000_000L,
+            MimeType = "application/octet-stream",
+            Extension = ".dat",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            IsDeleted = false
+        };
+        db.FileItems.Add(file);
+        await db.SaveChangesAsync();
+
+        var updated = await service.UpdateNodeAsync(node.Id, new UpdateStorageNodeRequest
+        {
+            MaxCapacityBytes = 50_000_000L
+        });
+
+        Assert.Equal(50_000_000L, updated.MaxCapacityBytes);
+    }
+
+    [Fact]
+    public async Task GetAllNodesAsync_LocalNode_WithOldHeartbeat_IsOnlineAndZeroLag()
+    {
+        using var db = CreateDbContext();
+        var service = CreateService(db);
+
+        var localNode = new StorageNode
+        {
+            Id = Guid.NewGuid(),
+            Name = "Master Local",
+            Type = StorageNodeType.LocalDisk,
+            Status = StorageNodeStatus.Online,
+            TotalSpaceBytes = 1_000_000_000L,
+            AvailableSpaceBytes = 500_000_000L,
+            MaxCapacityBytes = 1_000_000_000L,
+            LastHeartbeatAt = DateTime.UtcNow.AddHours(-5) // 5 hours ago
+        };
+        db.StorageNodes.Add(localNode);
+        await db.SaveChangesAsync();
+
+        var nodes = await service.GetAllNodesAsync();
+        var nodeDto = Assert.Single(nodes);
+        Assert.True(nodeDto.IsOnline);
+        Assert.Equal(0, nodeDto.SecondsSinceLastHeartbeat);
+    }
+
+    [Fact]
+    public async Task UpdateNodeAsync_LocalNode_WithoutDiskTelemetry_ValidatesAgainstNodeTotalSpaceBytes()
+    {
+        using var db = CreateDbContext();
+        var service = CreateService(db); // telemetry is null
+
+        var localNode = new StorageNode
+        {
+            Id = Guid.NewGuid(),
+            Name = "Master Local",
+            Type = StorageNodeType.LocalDisk,
+            Status = StorageNodeStatus.Online,
+            TotalSpaceBytes = 100_000_000L,
+            AvailableSpaceBytes = 50_000_000L,
+            MaxCapacityBytes = 80_000_000L
+        };
+        db.StorageNodes.Add(localNode);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ValidationException>(() =>
+            service.UpdateNodeAsync(localNode.Id, new UpdateStorageNodeRequest
+            {
+                MaxCapacityBytes = 150_000_000L // Exceeds 100_000_000L
+            }));
+
+        Assert.Contains("не может превышать физический размер диска", ex.Message);
     }
 }

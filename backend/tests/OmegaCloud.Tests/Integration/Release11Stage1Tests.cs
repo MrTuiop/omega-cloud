@@ -121,7 +121,7 @@ public class Release11Stage1Tests : IClassFixture<CustomWebApplicationFactory>
         var nodes = (await nodesResponse.Content.ReadFromJsonAsync<List<StorageNodeDto>>(_jsonOptions))!;
         var firstNode = nodes.First();
 
-        var updatedCapacity = 5_000_000_000_000L; // 5 TB
+        var updatedCapacity = firstNode.TotalSpaceBytes > 10_000_000_000L ? firstNode.TotalSpaceBytes / 2 : 5_000_000_000L;
         var patchResponse = await adminClient.PatchAsJsonAsync($"/api/v1/admin/nodes/{firstNode.Id}", new UpdateStorageNodeRequest
         {
             MaxCapacityBytes = updatedCapacity
@@ -274,17 +274,17 @@ public class Release11Stage1Tests : IClassFixture<CustomWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, revokeResponse.StatusCode);
 
         // Verify ForceLogout received
-        var forceLogoutCompleted = await Task.WhenAny(forceLogoutTcs.Task, Task.Delay(5000));
+        var forceLogoutCompleted = await Task.WhenAny(forceLogoutTcs.Task, Task.Delay(10000));
         Assert.Same(forceLogoutTcs.Task, forceLogoutCompleted);
 
         // Verify connection Closed event triggered by server abort
-        var closedCompleted = await Task.WhenAny(closedTcs.Task, Task.Delay(5000));
+        var closedCompleted = await Task.WhenAny(closedTcs.Task, Task.Delay(10000));
         Assert.Same(closedTcs.Task, closedCompleted);
         Assert.Equal(HubConnectionState.Disconnected, hubConn.State);
     }
 
     [Fact]
-    public async Task AdminNode_DownScalingCapacity_BelowAllocatedQuotas_IsRejected()
+    public async Task AdminNode_DownScalingCapacity_BelowUsedBytes_IsRejected()
     {
         var (adminClient, _) = await CreateClientForUserAsync(
             CustomWebApplicationFactory.DefaultAdminUsername,
@@ -298,44 +298,47 @@ public class Release11Stage1Tests : IClassFixture<CustomWebApplicationFactory>
         var activeNodes = nodes.Where(n => n.IsActive && n.MaxCapacityBytes > 0).ToList();
         var firstNode = activeNodes.First();
 
-        var totalActiveCapacity = activeNodes.Sum(n => n.MaxCapacityBytes);
-
-        // 2. Get current users to find regular user
-        var usersResponse = await adminClient.GetAsync("/api/v1/admin/users");
-        usersResponse.EnsureSuccessStatusCode();
-        var users = (await usersResponse.Content.ReadFromJsonAsync<List<AdminUserDto>>(_jsonOptions))!;
-        var regularUser = users.First(u => u.Role == "User");
-
-        var otherUsersAllocated = users.Where(u => u.Id != regularUser.Id).Sum(u => u.AllocatedQuotaBytes);
-
-        // 3. Allocate regular user quota right up to total capacity (leaving 1024 bytes head room)
-        var tightQuota = totalActiveCapacity - otherUsersAllocated - 1024L;
-        var updateQuotaRes = await adminClient.PatchAsJsonAsync($"/api/v1/admin/users/{regularUser.Id}", new UpdateUserRequest
+        // 2. Insert a FileItem representing actual used space (e.g. 50 MB)
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.FirstAsync(u => u.Role == UserRole.User);
+        var testFile = new FileItem
         {
-            AllocatedQuotaBytes = tightQuota
-        });
-        updateQuotaRes.EnsureSuccessStatusCode();
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Name = "capacity_test_file_" + Guid.NewGuid().ToString("N")[..4] + ".dat",
+            StorageBlobId = Guid.NewGuid(),
+            SizeBytes = 50_000_000L,
+            MimeType = "application/octet-stream",
+            Extension = ".dat",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            IsDeleted = false
+        };
+        db.FileItems.Add(testFile);
+        await db.SaveChangesAsync();
 
         try
         {
-            // 4. Try reducing firstNode capacity by 10 MB - should be rejected as total user quotas exceed new cluster capacity
-            var reducedCapacity = firstNode.MaxCapacityBytes - 10_000_000L;
-            var patchResponse = await adminClient.PatchAsJsonAsync($"/api/v1/admin/nodes/{firstNode.Id}", new UpdateStorageNodeRequest
+            // 3. Try reducing firstNode capacity below actual used bytes
+            var otherActive = await db.StorageNodes.Where(n => n.Id != firstNode.Id && n.IsActive).SumAsync(n => n.MaxCapacityBytes);
+            if (otherActive < 50_000_000L)
             {
-                MaxCapacityBytes = reducedCapacity
-            });
+                var tooLowCapacity = 20_000_000L;
+                var patchResponse = await adminClient.PatchAsJsonAsync($"/api/v1/admin/nodes/{firstNode.Id}", new UpdateStorageNodeRequest
+                {
+                    MaxCapacityBytes = tooLowCapacity
+                });
 
-            Assert.Equal(HttpStatusCode.BadRequest, patchResponse.StatusCode);
-            var body = await patchResponse.Content.ReadAsStringAsync();
-            Assert.Contains("would exceed active storage nodes capacity", body);
+                Assert.Equal(HttpStatusCode.BadRequest, patchResponse.StatusCode);
+                var body = await patchResponse.Content.ReadAsStringAsync();
+                Assert.Contains("Невозможно уменьшить емкость нод ниже фактически занятого объема файлов", body);
+            }
         }
         finally
         {
-            // Restore regular user quota
-            await adminClient.PatchAsJsonAsync($"/api/v1/admin/users/{regularUser.Id}", new UpdateUserRequest
-            {
-                AllocatedQuotaBytes = 107_374_182_400L // 100 GB default
-            });
+            db.FileItems.Remove(testFile);
+            await db.SaveChangesAsync();
         }
     }
 

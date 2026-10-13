@@ -179,6 +179,61 @@ describe('FileGridComponent', () => {
     expect(component.downloadFile.emit).not.toHaveBeenCalled();
   });
 
+  it('should toggle selection on checkbox click without deselecting other items', () => {
+    const f1: FolderItem = { id: 'f-1', userId: 'u', name: 'Folder 1', color: null, isDeleted: false, isShared: false, createdAt: '', updatedAt: '' };
+    const file1: FileItem = { id: 'file-1', userId: 'u', storageBlobId: 'b-1', name: 'f1.txt', extension: 'txt', mimeType: 'text/plain', sizeBytes: 10, isDeleted: false, isFavorite: false, isShared: false, createdAt: '', updatedAt: '' };
+    component.folders = [f1];
+    component.files = [file1];
+    component.selectedFolderIds = ['f-1'];
+    fixture.detectChanges();
+
+    spyOn(component.selectionChange, 'emit');
+
+    const fileCheckbox = fixture.nativeElement.querySelector('.file-card .item-checkbox');
+    fileCheckbox.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(component.selectedFolderIds).toEqual(['f-1']);
+    expect(component.selectedFileIds).toEqual(['file-1']);
+    expect(component.selectionChange.emit).toHaveBeenCalledWith({
+      folderIds: ['f-1'],
+      fileIds: ['file-1']
+    });
+
+    // Click again to unselect file1
+    fileCheckbox.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(component.selectedFolderIds).toEqual(['f-1']);
+    expect(component.selectedFileIds).toEqual([]);
+  });
+
+  it('should use DragStateService during drag start and drop', () => {
+    const targetFolder: FolderItem = { id: 'f-2', userId: 'u', name: 'Folder 2', color: null, isDeleted: false, isShared: false, createdAt: '', updatedAt: '' };
+    const file1: FileItem = { id: 'file-1', userId: 'u', storageBlobId: 'b-1', name: 'f1.txt', extension: 'txt', mimeType: 'text/plain', sizeBytes: 10, isDeleted: false, isFavorite: false, isShared: false, createdAt: '', updatedAt: '' };
+    component.folders = [targetFolder];
+    component.files = [file1];
+    fixture.detectChanges();
+
+    spyOn(component.folderDrop, 'emit');
+
+    const fileCard = fixture.nativeElement.querySelector('.file-card');
+    const dragStartEvent = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+    fileCard.dispatchEvent(dragStartEvent);
+
+    expect(component.dragState.isDragging()).toBeTrue();
+    expect(component.dragState.getDragData()?.fileIds).toEqual(['file-1']);
+
+    const folderCard = fixture.nativeElement.querySelector('.folder-card');
+    const dropEvent = new DragEvent('drop', { bubbles: true, cancelable: true });
+    folderCard.dispatchEvent(dropEvent);
+
+    expect(component.folderDrop.emit).toHaveBeenCalledWith({
+      targetFolder,
+      fileId: 'file-1',
+      fileIds: ['file-1'],
+      folderIds: []
+    });
+    expect(component.dragState.isDragging()).toBeFalse();
+  });
+
   it('should NOT allow dragover on self when folder is selected', () => {
     const folder: FolderItem = { id: 'f-1', userId: 'u', name: 'F1', color: null, isDeleted: false, isShared: false, createdAt: '', updatedAt: '' };
     component.folders = [folder];

@@ -98,13 +98,16 @@ public class FilesController : ControllerBase
     [ProducesResponseType(typeof(OmegaCloud.Application.DTOs.Folders.FolderContentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<OmegaCloud.Application.DTOs.Folders.FolderContentDto>> SearchFiles(
-        [FromQuery] string q,
+        [FromQuery] string? q = null,
+        [FromQuery] string? query = null,
         [FromQuery] Guid? folderId = null,
         [FromQuery] string scope = "everywhere",
+        [FromQuery] Guid[]? folderIds = null,
         CancellationToken ct = default)
     {
+        var searchTerm = !string.IsNullOrWhiteSpace(q) ? q : (!string.IsNullOrWhiteSpace(query) ? query : string.Empty);
         var userId = GetCurrentUserId();
-        var result = await _fileService.SearchAsync(q, folderId, scope, userId, ct);
+        var result = await _fileService.SearchAsync(searchTerm, folderId, scope, userId, folderIds, ct);
         return Ok(result);
     }
 
@@ -269,6 +272,37 @@ public class FilesController : ControllerBase
         await _fileService.BulkMoveAsync(request.FileIds, request.FolderIds, request.TargetFolderId, userId, ct);
         return NoContent();
     }
+
+    [HttpPost("copy-to-shared")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CopyToShared(
+        [FromBody] CopyToSharedRequest request,
+        CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var targetFolderId = request.TargetSharedFolderId ?? request.TargetFolderId;
+        await _fileService.CopyToSharedAsync(request.FileIds, request.FolderIds, targetFolderId, userId, ct);
+        return Ok(new { message = "Files copied to shared space successfully." });
+    }
+
+    [HttpPost("save-to-personal")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SaveToPersonal(
+        [FromBody] SaveToPersonalRequest request,
+        CancellationToken ct)
+    {
+        var userId = GetCurrentUserId();
+        var targetFolderId = request.TargetFolderId ?? request.TargetSharedFolderId;
+        await _fileService.SaveToPersonalAsync(request.FileIds, request.FolderIds, targetFolderId, userId, ct);
+        return Ok(new { message = "Files saved to personal space successfully." });
+    }
+
 
     private Guid GetCurrentUserId()
     {

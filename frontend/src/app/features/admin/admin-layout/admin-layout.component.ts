@@ -4,6 +4,9 @@ import { RouterModule, Router } from '@angular/router';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { ThemeService } from '../../../core/services/theme.service';
 import { ApiService } from '../../../core/services/api.service';
+import { I18nService } from '../../../core/services/i18n.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { GlassDropdownComponent } from '../../../shared/components/glass-dropdown/glass-dropdown.component';
 import { GlassButtonComponent } from '../../../shared/components/glass-button/glass-button.component';
 
 @Component({
@@ -11,7 +14,9 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
   standalone: true,
   imports: [
     CommonModule,
-    RouterModule
+    RouterModule,
+    TranslatePipe,
+    GlassDropdownComponent
   ],
   template: `
     <div class="admin-shell">
@@ -21,12 +26,12 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
         <div class="sidebar-brand">
           <div class="brand-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
             </svg>
           </div>
           <div class="brand-info">
             <span class="brand-title">Omega Cloud</span>
-            <span class="brand-subtitle">Console</span>
+            <span class="brand-subtitle">{{ 'admin.nav.console' | translate }}</span>
           </div>
         </div>
 
@@ -36,7 +41,7 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
             routerLink="/admin/users"
             routerLinkActive="nav-item--active"
             class="nav-item"
-            title="Users Management"
+            [title]="'admin.nav.users' | translate"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -44,14 +49,14 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
               <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
               <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
             </svg>
-            <span>Users & Quotas</span>
+            <span>{{ 'admin.nav.users' | translate }}</span>
           </a>
 
           <a
             routerLink="/admin/nodes"
             routerLinkActive="nav-item--active"
             class="nav-item"
-            title="Storage Nodes & Telemetry"
+            [title]="'admin.nav.nodes' | translate"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
@@ -59,14 +64,14 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
               <line x1="6" y1="6" x2="6.01" y2="6"></line>
               <line x1="6" y1="18" x2="6.01" y2="18"></line>
             </svg>
-            <span>Storage Nodes</span>
+            <span>{{ 'admin.nodes.title' | translate }}</span>
           </a>
 
           <a
             routerLink="/admin/audit"
             routerLinkActive="nav-item--active"
             class="nav-item"
-            title="System Audit Trail"
+            [title]="'admin.nav.audit' | translate"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -75,30 +80,41 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
               <line x1="16" y1="17" x2="8" y2="17"></line>
               <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
-            <span>Audit Log</span>
+            <span>{{ 'admin.nav.audit' | translate }}</span>
           </a>
 
           <a
             routerLink="/admin/health"
             routerLinkActive="nav-item--active"
             class="nav-item"
-            title="Master Server Health"
+            [title]="'admin.nav.health' | translate"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
             </svg>
-            <span>System Health</span>
+            <span>{{ 'admin.nav.health' | translate }}</span>
           </a>
         </nav>
 
         <!-- Sidebar Footer -->
         <div class="sidebar-footer">
+          <!-- Language selector -->
+          <div class="lang-selector">
+            <app-glass-dropdown
+              size="sm"
+              variant="subtle"
+              [options]="languageOptions"
+              [value]="i18n.currentLang()"
+              (valueChange)="i18n.setLanguage($event)"
+            ></app-glass-dropdown>
+          </div>
+
           <!-- Back to Drive Link -->
           <a routerLink="/drive" class="drive-link">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
-            <span>Back to Drive</span>
+            <span>{{ 'admin.nav.backToDrive' | translate }}</span>
           </a>
 
           <!-- User profile strip -->
@@ -109,12 +125,12 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
               </div>
               <div class="user-info">
                 <span class="username">{{ authStore.currentUser()?.username || 'Admin' }}</span>
-                <span class="role-badge">Super Admin</span>
+                <span class="role-badge">{{ 'admin.nav.superAdmin' | translate }}</span>
               </div>
             </div>
 
             <div class="strip-actions">
-              <button class="strip-btn" (click)="themeService.toggleTheme()" title="Switch Theme">
+              <button class="strip-btn" (click)="themeService.toggleTheme()" [title]="'nav.switchTheme' | translate">
                 @if (themeService.isDark()) {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="5"></circle>
@@ -128,7 +144,7 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
                 }
               </button>
 
-              <button class="strip-btn" (click)="logout()" title="Logout">
+              <button class="strip-btn" (click)="logout()" [title]="'nav.logout' | translate">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                   <polyline points="16 17 21 12 16 7"></polyline>
@@ -174,22 +190,26 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
     }
 
     .sidebar-brand {
-      padding: 24px 20px 20px;
+      height: 64px;
+      padding: 0 20px;
       display: flex;
       align-items: center;
       gap: 12px;
+      border-bottom: 1px solid var(--omega-glass-border-subtle);
+      box-sizing: border-box;
     }
 
     .brand-icon {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       border-radius: var(--omega-radius-md);
-      background: linear-gradient(135deg, #bf5af2 0%, #5e5ce6 100%);
+      background: var(--omega-accent-gradient);
       color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px 0 rgba(191, 90, 242, 0.4);
+      box-shadow: 0 4px 12px 0 rgba(0, 113, 227, 0.4);
+      flex-shrink: 0;
     }
 
     .brand-info {
@@ -344,6 +364,10 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
       }
     }
 
+    .lang-selector {
+      margin-bottom: 12px;
+    }
+
     .admin-stage {
       flex: 1;
       height: 100%;
@@ -357,8 +381,15 @@ import { GlassButtonComponent } from '../../../shared/components/glass-button/gl
 export class AdminLayoutComponent {
   readonly authStore = inject(AuthStore);
   readonly themeService = inject(ThemeService);
+  readonly i18n = inject(I18nService);
   private readonly apiService = inject(ApiService);
   private readonly router = inject(Router);
+
+  readonly languageOptions = [
+    { value: 'ru', label: 'Русский (RU)' },
+    { value: 'en', label: 'English (EN)' },
+    { value: 'zh', label: '中文 (ZH)' }
+  ];
 
   readonly userInitials = computed(() => {
     const user = this.authStore.currentUser();

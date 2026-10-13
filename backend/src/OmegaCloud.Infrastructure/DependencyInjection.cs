@@ -130,6 +130,7 @@ public static class DependencyInjection
 
         // Security & Time Services
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+        services.AddSingleton<IDiskTelemetryProvider, DiskTelemetryProvider>();
         services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
         services.AddSingleton<IHmacSigner, HmacSigner>();
         services.AddSingleton<ISessionRevocationCache, SessionRevocationCache>();

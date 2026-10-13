@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { ThemeService } from '../../core/services/theme.service';
-import { I18nService } from '../../core/services/i18n.service';
+import { I18nService, SUPPORTED_LANGUAGES } from '../../core/services/i18n.service';
 import { ToastService } from '../../core/services/toast.service';
 import { ResumableUploaderService } from '../../core/services/resumable-uploader.service';
 import { FolderContent, FolderItem, FileItem } from '../../core/models/file.models';
@@ -14,6 +14,7 @@ import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { GlassButtonComponent } from '../../shared/components/glass-button/glass-button.component';
 import { GlassModalComponent } from '../../shared/components/glass-modal/glass-modal.component';
+import { GlassDropdownComponent, DropdownOption } from '../../shared/components/glass-dropdown/glass-dropdown.component';
 import { BreadcrumbsComponent } from '../../shared/components/breadcrumbs/breadcrumbs.component';
 import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-queue-modal.component';
 
@@ -29,6 +30,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
     TranslatePipe,
     GlassButtonComponent,
     GlassModalComponent,
+    GlassDropdownComponent,
     BreadcrumbsComponent,
     UploadQueueModalComponent
   ],
@@ -94,6 +96,21 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
               </svg>
               <span>{{ 'nav.shared' | translate }}</span>
+            </a>
+
+            <a routerLink="/drive" [queryParams]="{ tab: 'favorites' }" class="nav-item" [title]="'nav.favorites' | translate">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span>{{ 'nav.favorites' | translate }}</span>
+            </a>
+
+            <a routerLink="/drive" [queryParams]="{ tab: 'trash' }" class="nav-item" [title]="'nav.trash' | translate">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>{{ 'nav.trash' | translate }}</span>
             </a>
 
             @if (authStore.isAdmin()) {
@@ -203,10 +220,15 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
                 [ngModel]="searchQuery()"
                 (ngModelChange)="searchQuery.set($event)"
               />
-              <select class="scope-select" [ngModel]="searchScope()" (ngModelChange)="searchScope.set($event)">
-                <option value="everywhere">{{ 'search.scopeEverywhere' | translate }}</option>
-                <option value="current">{{ 'search.scopeCurrentFolder' | translate }}</option>
-              </select>
+              <div class="scope-dropdown">
+                <app-glass-dropdown
+                  size="sm"
+                  variant="subtle"
+                  [options]="searchScopeOptions()"
+                  [value]="searchScope()"
+                  (valueChange)="searchScope.set($event)"
+                ></app-glass-dropdown>
+              </div>
               @if (searchQuery()) {
                 <button class="clear-search" (click)="searchQuery.set('')">✕</button>
               }
@@ -246,11 +268,13 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
 
             <!-- Language Selector -->
             <div class="lang-selector">
-              <select [ngModel]="i18n.currentLang()" (ngModelChange)="i18n.setLanguage($event)">
-                @for (lang of i18n.supportedLanguages; track lang.code) {
-                  <option [value]="lang.code">{{ lang.shortLabel }}</option>
-                }
-              </select>
+              <app-glass-dropdown
+                size="sm"
+                variant="subtle"
+                [options]="languageOptions"
+                [value]="i18n.currentLang()"
+                (valueChange)="i18n.setLanguage($event)"
+              ></app-glass-dropdown>
             </div>
 
             <!-- Actions: Upload / New Folder if authenticated, Login if anonymous -->
@@ -518,9 +542,16 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       border-bottom: 1px solid var(--omega-glass-border-subtle);
 
       .brand-icon {
-        color: var(--omega-accent);
+        width: 36px;
+        height: 36px;
+        border-radius: var(--omega-radius-md);
+        background: var(--omega-accent-gradient);
+        color: #ffffff;
         display: flex;
         align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px 0 rgba(0, 113, 227, 0.4);
+        flex-shrink: 0;
       }
 
       .brand-text {
@@ -776,20 +807,8 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
         width: 140px;
       }
 
-      .scope-select {
-        background: none;
-        border: none;
-        border-left: 1px solid var(--omega-glass-border-subtle);
-        padding-left: 8px;
-        font-size: 11px;
-        color: var(--omega-text-secondary);
-        outline: none;
-        cursor: pointer;
-
-        option {
-          background: var(--omega-bg-canvas);
-          color: var(--omega-text-primary);
-        }
+      .scope-dropdown {
+        min-width: 140px;
       }
 
       .clear-search {
@@ -1231,6 +1250,16 @@ export class SharedSpaceComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly toast = inject(ToastService);
   private readonly uploader = inject(ResumableUploaderService);
+
+  readonly searchScopeOptions = computed<DropdownOption[]>(() => [
+    { value: 'everywhere', label: this.i18n.translate('search.scopeEverywhere') },
+    { value: 'current', label: this.i18n.translate('search.scopeCurrentFolder') }
+  ]);
+
+  readonly languageOptions: DropdownOption[] = SUPPORTED_LANGUAGES.map(l => ({
+    value: l.code,
+    label: l.shortLabel
+  }));
 
   readonly folderContent = signal<FolderContent | null>(null);
   readonly loading = signal<boolean>(false);

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
 import { AuthStore } from '../../../core/auth/auth.store';
+import { I18nService } from '../../../core/services/i18n.service';
 import {
   AdminUser,
   CreateUserRequest,
@@ -13,8 +14,10 @@ import { UserSession } from '../../../core/models/auth.models';
 import { GlassCardComponent } from '../../../shared/components/glass-card/glass-card.component';
 import { GlassButtonComponent } from '../../../shared/components/glass-button/glass-button.component';
 import { GlassModalComponent } from '../../../shared/components/glass-modal/glass-modal.component';
+import { GlassDropdownComponent } from '../../../shared/components/glass-dropdown/glass-dropdown.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-users-management',
@@ -25,30 +28,32 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
     GlassCardComponent,
     GlassButtonComponent,
     GlassModalComponent,
+    GlassDropdownComponent,
     FileSizePipe,
-    RelativeTimePipe
+    RelativeTimePipe,
+    TranslatePipe
   ],
   template: `
     <div class="page-container anim-fade-in">
       <!-- Header -->
       <div class="page-header">
         <div class="header-titles">
-          <h1 class="page-title">Users & Quotas</h1>
-          <p class="page-subtitle">Manage accounts, storage quotas, device sessions, and role permissions.</p>
+          <h1 class="page-title">{{ 'admin.users.title' | translate }}</h1>
+          <p class="page-subtitle">{{ 'admin.users.subtitle' | translate }}</p>
         </div>
         <div class="header-actions">
           <app-glass-button variant="secondary" size="md" (btnClick)="loadUsers()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            Refresh
+            {{ 'admin.users.refresh' | translate }}
           </app-glass-button>
           <app-glass-button variant="primary" size="md" (btnClick)="openCreateUserModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            Create User
+            {{ 'admin.users.createUser' | translate }}
           </app-glass-button>
         </div>
       </div>
@@ -57,33 +62,33 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <div class="stats-grid">
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Total Users</div>
+            <div class="stat-label">{{ 'admin.users.totalUsers' | translate }}</div>
             <div class="stat-value">{{ totalUsersCount() }}</div>
-            <div class="stat-sub">{{ activeUsersCount() }} active accounts</div>
+            <div class="stat-sub">{{ 'admin.users.activeAccounts' | translate: { count: activeUsersCount() } }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Active Sessions</div>
+            <div class="stat-label">{{ 'admin.users.activeSessions' | translate }}</div>
             <div class="stat-value">{{ totalSessionsCount() }}</div>
-            <div class="stat-sub">Connected client devices</div>
+            <div class="stat-sub">{{ 'admin.users.connectedDevices' | translate }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Total Quota Allocated</div>
+            <div class="stat-label">{{ 'admin.users.totalAllocatedQuota' | translate }}</div>
             <div class="stat-value">{{ totalAllocatedQuota() | fileSize }}</div>
-            <div class="stat-sub">Across all registered users</div>
+            <div class="stat-sub">{{ 'admin.users.acrossUsers' | translate }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Total Quota Used</div>
+            <div class="stat-label">{{ 'admin.users.totalUsedQuota' | translate }}</div>
             <div class="stat-value">{{ totalUsedQuota() | fileSize }}</div>
-            <div class="stat-sub">{{ fleetQuotaPercent() }}% of total capacity</div>
+            <div class="stat-sub">{{ 'admin.users.ofCapacity' | translate: { percent: fleetQuotaPercent() } }}</div>
           </div>
         </app-glass-card>
       </div>
@@ -97,7 +102,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
           </svg>
           <input
             type="text"
-            placeholder="Search by username or email..."
+            [placeholder]="'admin.users.searchPlaceholder' | translate"
             [ngModel]="searchQuery()"
             (ngModelChange)="searchQuery.set($event)"
           />
@@ -107,17 +112,21 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         </div>
 
         <div class="filters">
-          <select [ngModel]="roleFilter()" (ngModelChange)="roleFilter.set($event)" class="glass-select">
-            <option value="All">All Roles</option>
-            <option value="Admin">Admin</option>
-            <option value="User">User</option>
-          </select>
+          <app-glass-dropdown
+            [options]="roleFilterOptions()"
+            [value]="roleFilter()"
+            (valueChange)="roleFilter.set($event)"
+            size="md"
+            variant="subtle"
+          ></app-glass-dropdown>
 
-          <select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)" class="glass-select">
-            <option value="All">All Statuses</option>
-            <option value="Active">Active Only</option>
-            <option value="Inactive">Inactive Only</option>
-          </select>
+          <app-glass-dropdown
+            [options]="statusFilterOptions()"
+            [value]="statusFilter()"
+            (valueChange)="statusFilter.set($event)"
+            size="md"
+            variant="subtle"
+          ></app-glass-dropdown>
         </div>
       </div>
 
@@ -126,7 +135,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         @if (isLoading()) {
           <div class="loading-state">
             <div class="loading-spinner"></div>
-            <span>Loading users...</span>
+            <span>{{ 'admin.users.loading' | translate }}</span>
           </div>
         } @else if (filteredUsers().length === 0) {
           <div class="empty-state">
@@ -134,22 +143,22 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
               <circle cx="9" cy="7" r="4"></circle>
             </svg>
-            <h3>No users found</h3>
-            <p>Try adjusting your search query or filters.</p>
+            <h3>{{ 'admin.users.noUsersFound' | translate }}</h3>
+            <p>{{ 'admin.users.adjustFilters' | translate }}</p>
           </div>
         } @else {
           <div class="table-wrapper">
             <table class="glass-table">
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Storage Quota</th>
-                  <th>Status</th>
-                  <th>Active Sessions</th>
+                  <th>{{ 'admin.users.colUser' | translate }}</th>
+                  <th>{{ 'admin.users.colRole' | translate }}</th>
+                  <th>{{ 'admin.users.colQuota' | translate }}</th>
+                  <th>{{ 'admin.users.colStatus' | translate }}</th>
+                  <th>{{ 'admin.users.colSessions' | translate }}</th>
                   <th>Last Active</th>
-                  <th>Created</th>
-                  <th class="actions-header">Actions</th>
+                  <th>{{ 'admin.users.colCreated' | translate }}</th>
+                  <th class="actions-header">{{ 'admin.users.colActions' | translate }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,7 +177,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                     </td>
                     <td>
                       <span class="role-pill" [class]="'role-pill--' + u.role.toLowerCase()">
-                        {{ u.role }}
+                        {{ u.role === 'Admin' ? ('admin.users.roleAdmin' | translate) : ('admin.users.roleUser' | translate) }}
                       </span>
                     </td>
                     <td>
@@ -189,18 +198,18 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                     <td>
                       @if (u.isActive) {
                         <span class="status-pill status-pill--active">
-                          <span class="status-dot"></span> Active
+                          <span class="status-dot"></span> {{ 'admin.users.statusActive' | translate }}
                         </span>
                       } @else {
                         <span class="status-pill status-pill--inactive">
-                          <span class="status-dot"></span> Inactive
+                          <span class="status-dot"></span> {{ 'admin.users.statusDisabled' | translate }}
                         </span>
                       }
                     </td>
                     <td>
                       <div
                         class="sessions-badge sessions-badge--clickable"
-                        title="Inspect & manage active sessions"
+                        [title]="'admin.users.sessionsBtn' | translate"
                         (click)="openSessionsModal(u)"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -223,7 +232,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                     </td>
                     <td class="actions-cell">
                       <div class="row-actions">
-                        <button class="action-btn" title="Inspect & Manage Sessions" (click)="openSessionsModal(u)">
+                        <button class="action-btn" [title]="'admin.users.sessionsBtn' | translate" (click)="openSessionsModal(u)">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                             <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -231,14 +240,14 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                           </svg>
                         </button>
 
-                        <button class="action-btn" title="Edit User & Quota" (click)="openEditModal(u)">
+                        <button class="action-btn" [title]="'admin.users.edit' | translate" (click)="openEditModal(u)">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 20h9"></path>
                             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                           </svg>
                         </button>
 
-                        <button class="action-btn" title="Reset Password" (click)="openResetPasswordModal(u)">
+                        <button class="action-btn" [title]="'admin.users.resetPassword' | translate" (click)="openResetPasswordModal(u)">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
@@ -247,7 +256,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 
                         <button
                           class="action-btn"
-                          title="Terminate Sessions"
+                          [title]="'admin.users.revoke' | translate"
                           (click)="openRevokeModal(u)"
                           [disabled]="u.activeSessionsCount === 0"
                         >
@@ -259,7 +268,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 
                         <button
                           class="action-btn action-btn--danger"
-                          title="Delete User"
+                          [title]="'admin.users.delete' | translate"
                           [disabled]="u.id === authStore.currentUser()?.id"
                           (click)="openDeleteModal(u)"
                         >
@@ -281,11 +290,11 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Create User Modal -->
       <app-glass-modal
         [isOpen]="createUserModalOpen()"
-        title="Create New User"
+        [title]="'admin.users.createModalTitle' | translate"
         (close)="createUserModalOpen.set(false)"
       >
         <div class="modal-form">
-          <label>Username</label>
+          <label>{{ 'admin.users.username' | translate }}</label>
           <input
             type="text"
             [(ngModel)]="newUsername"
@@ -293,7 +302,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             autocomplete="off"
           />
 
-          <label>Email Address</label>
+          <label>{{ 'admin.users.email' | translate }}</label>
           <input
             type="email"
             [(ngModel)]="newEmail"
@@ -301,7 +310,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             autocomplete="off"
           />
 
-          <label>Password</label>
+          <label>{{ 'admin.users.password' | translate }}</label>
           <input
             type="password"
             [(ngModel)]="newPassword"
@@ -309,13 +318,15 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             autocomplete="new-password"
           />
 
-          <label>Role</label>
-          <select [(ngModel)]="newRole" class="modal-select">
-            <option value="User">User</option>
-            <option value="Admin">Admin</option>
-          </select>
+          <label>{{ 'admin.users.colRole' | translate }}</label>
+          <app-glass-dropdown
+            [options]="userRoleOptions()"
+            [(value)]="newRole"
+            size="md"
+            variant="default"
+          ></app-glass-dropdown>
 
-          <label>Allocated Quota</label>
+          <label>{{ 'admin.users.colQuota' | translate }}</label>
           <div class="preset-buttons">
             @for (p of quotaPresets; track p.bytes) {
               <button
@@ -332,7 +343,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             type="number"
             [(ngModel)]="newQuotaGigabytes"
             (ngModelChange)="onGigabytesChange($event)"
-            placeholder="Custom Quota in GB"
+            [placeholder]="'admin.users.customQuotaGb' | translate"
           />
 
           @if (formError()) {
@@ -341,14 +352,14 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         </div>
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="createUserModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="createUserModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
           <app-glass-button
             variant="primary"
             [disabled]="isSaving() || !newUsername.trim() || !newEmail.trim() || !newPassword"
             [loading]="isSaving()"
             (btnClick)="createUser()"
           >
-            Create User
+            {{ 'admin.users.createUser' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -356,22 +367,21 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Edit User Modal -->
       <app-glass-modal
         [isOpen]="editUserModalOpen()"
-        [title]="'Edit ' + (selectedUser()?.username || 'User')"
+        [title]="'admin.users.editModalTitle' | translate: { username: selectedUser()?.username || '' }"
         (close)="editUserModalOpen.set(false)"
       >
         @if (selectedUser()) {
           <div class="modal-form">
-            <label>Role</label>
-            <select
-              [(ngModel)]="editRole"
-              class="modal-select"
+            <label>{{ 'admin.users.colRole' | translate }}</label>
+            <app-glass-dropdown
+              [options]="userRoleOptions()"
+              [(value)]="editRole"
               [disabled]="selectedUser()?.id === authStore.currentUser()?.id"
-            >
-              <option value="User">User</option>
-              <option value="Admin">Admin</option>
-            </select>
+              size="md"
+              variant="default"
+            ></app-glass-dropdown>
 
-            <label>Storage Quota</label>
+            <label>{{ 'admin.users.colQuota' | translate }}</label>
             <div class="preset-buttons">
               @for (p of quotaPresets; track p.bytes) {
                 <button
@@ -388,7 +398,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
               type="number"
               [(ngModel)]="editQuotaGigabytes"
               (ngModelChange)="onEditGigabytesChange($event)"
-              placeholder="Custom Quota in GB"
+              [placeholder]="'admin.users.customQuotaGb' | translate"
             />
 
             <label class="checkbox-label" [class.checkbox-label--disabled]="selectedUser()?.id === authStore.currentUser()?.id">
@@ -397,7 +407,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                 [(ngModel)]="editIsActive"
                 [disabled]="selectedUser()?.id === authStore.currentUser()?.id"
               />
-              <span>Active Account (Users can log in and upload files)</span>
+              <span>{{ 'admin.users.activeCheckbox' | translate }}</span>
             </label>
 
             @if (selectedUser()?.id === authStore.currentUser()?.id) {
@@ -411,14 +421,14 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         }
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="editUserModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="editUserModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
           <app-glass-button
             variant="primary"
             [disabled]="isSaving()"
             [loading]="isSaving()"
             (btnClick)="saveUserEdit()"
           >
-            Save Changes
+            {{ 'admin.users.saveUser' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -426,7 +436,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Reset Password Modal -->
       <app-glass-modal
         [isOpen]="resetPasswordModalOpen()"
-        [title]="'Reset Password for ' + (selectedUser()?.username || 'User')"
+        [title]="'admin.users.resetPasswordTitle' | translate: { username: selectedUser()?.username || '' }"
         (close)="resetPasswordModalOpen.set(false)"
       >
         <div class="modal-form">
@@ -434,7 +444,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
             Entering a new password will immediately terminate all active sessions for this user.
           </p>
 
-          <label>New Password</label>
+          <label>{{ 'admin.users.newPassword' | translate }}</label>
           <input
             type="password"
             [(ngModel)]="resetPasswordValue"
@@ -448,14 +458,14 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         </div>
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="resetPasswordModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="resetPasswordModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
           <app-glass-button
             variant="primary"
             [disabled]="isSaving() || resetPasswordValue.length < 6"
             [loading]="isSaving()"
             (btnClick)="saveResetPassword()"
           >
-            Set Password
+            {{ 'admin.users.submitReset' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -463,18 +473,17 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Revoke Sessions Modal -->
       <app-glass-modal
         [isOpen]="revokeModalOpen()"
-        title="Terminate Sessions"
+        [title]="'admin.users.sessionsModalTitle' | translate: { username: selectedUser()?.username || '' }"
         (close)="revokeModalOpen.set(false)"
       >
         <p>
-          Are you sure you want to terminate all <strong>{{ selectedUser()?.activeSessionsCount }}</strong> active sessions for user
-          <strong>{{ selectedUser()?.username }}</strong>? They will be logged out immediately.
+          {{ 'admin.users.deleteWarning' | translate }}
         </p>
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="revokeModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="revokeModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
           <app-glass-button variant="danger" [loading]="isSaving()" (btnClick)="confirmRevokeSessions()">
-            Terminate Sessions
+            {{ 'admin.users.revokeAll' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -482,14 +491,14 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Inspect User Sessions Modal -->
       <app-glass-modal
         [isOpen]="sessionsModalOpen()"
-        [title]="'Active Sessions: ' + (selectedUser()?.username || 'User')"
+        [title]="'admin.users.sessionsModalTitle' | translate: { username: selectedUser()?.username || '' }"
         (close)="sessionsModalOpen.set(false)"
       >
         <div class="sessions-modal-content">
           @if (isLoadingSessions()) {
             <div class="loading-state">
               <div class="loading-spinner"></div>
-              <span>Loading active sessions...</span>
+              <span>{{ 'admin.users.loading' | translate }}</span>
             </div>
           } @else if (userSessions().length === 0) {
             <div class="empty-sessions">
@@ -498,8 +507,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                 <line x1="8" y1="21" x2="16" y2="21"></line>
                 <line x1="12" y1="17" x2="12" y2="21"></line>
               </svg>
-              <h4>No active sessions</h4>
-              <p>User is not currently logged in on any device.</p>
+              <h4>{{ 'admin.users.noActiveSessions' | translate }}</h4>
             </div>
           } @else {
             <div class="sessions-list">
@@ -516,7 +524,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                     <div class="session-title-line">
                       <span class="session-device">{{ s.deviceName || 'Web Client' }}</span>
                       @if (s.isCurrent) {
-                        <span class="current-badge">Current Device</span>
+                        <span class="current-badge">{{ 'admin.users.currentDevice' | translate }}</span>
                       }
                     </div>
                     <div class="session-details-line">
@@ -535,7 +543,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                       [loading]="revokingSessionId() === s.id"
                       (btnClick)="revokeSingleSession(s.id)"
                     >
-                      Revoke
+                      {{ 'admin.users.revoke' | translate }}
                     </app-glass-button>
                   </div>
                 </div>
@@ -545,10 +553,10 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
         </div>
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="sessionsModalOpen.set(false)">Close</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="sessionsModalOpen.set(false)">{{ 'common.close' | translate }}</app-glass-button>
           @if (userSessions().length > 0) {
             <app-glass-button variant="danger" [loading]="isSaving()" (btnClick)="confirmRevokeSessions()">
-              Terminate All ({{ userSessions().length }})
+              {{ 'admin.users.revokeAll' | translate }} ({{ userSessions().length }})
             </app-glass-button>
           }
         </div>
@@ -557,18 +565,20 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Delete User Modal -->
       <app-glass-modal
         [isOpen]="deleteModalOpen()"
-        title="Delete User Account"
+        [title]="'admin.users.deleteModalTitle' | translate"
         (close)="deleteModalOpen.set(false)"
       >
         <p>
-          Are you sure you want to permanently delete user <strong>{{ selectedUser()?.username }}</strong>?
-          All associated data, files, and sessions will be removed.
+          {{ 'admin.users.deleteConfirm' | translate: { username: selectedUser()?.username || '' } }}
+        </p>
+        <p class="modal-notice">
+          {{ 'admin.users.deleteWarning' | translate }}
         </p>
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="deleteModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="deleteModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
           <app-glass-button variant="danger" [loading]="isSaving()" (btnClick)="confirmDeleteUser()">
-            Delete User
+            {{ 'admin.users.delete' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -1170,6 +1180,24 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 export class UsersManagementComponent implements OnInit {
   private readonly apiService = inject(ApiService);
   readonly authStore = inject(AuthStore);
+  readonly i18n = inject(I18nService);
+
+  readonly roleFilterOptions = computed(() => [
+    { value: 'All', label: this.i18n.t('admin.users.allRoles') },
+    { value: 'Admin', label: this.i18n.t('admin.users.roleAdmin') },
+    { value: 'User', label: this.i18n.t('admin.users.roleUser') }
+  ]);
+
+  readonly statusFilterOptions = computed(() => [
+    { value: 'All', label: this.i18n.t('admin.users.allStatuses') },
+    { value: 'Active', label: this.i18n.t('admin.users.activeOnly') },
+    { value: 'Inactive', label: this.i18n.t('admin.users.inactiveOnly') }
+  ]);
+
+  readonly userRoleOptions = computed(() => [
+    { value: 'User', label: this.i18n.t('admin.users.roleUser') },
+    { value: 'Admin', label: this.i18n.t('admin.users.roleAdmin') }
+  ]);
 
   users = signal<AdminUser[]>([]);
   isLoading = signal<boolean>(false);

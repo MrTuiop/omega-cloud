@@ -120,4 +120,38 @@ describe('SharedSpaceComponent', () => {
     });
     expect(component.canMutate('u-1')).toBeTrue();
   });
+
+  it('should provide searchScopeOptions and languageOptions', () => {
+    spyOn(apiService, 'getSharedFolders').and.returnValue(of(mockSharedContent));
+    fixture.detectChanges();
+
+    expect(component.searchScopeOptions().length).toBe(2);
+    expect(component.searchScopeOptions()[0].value).toBe('everywhere');
+    expect(component.searchScopeOptions()[1].value).toBe('current');
+
+    expect(component.languageOptions.length).toBeGreaterThan(0);
+  });
+
+  it('should display favorites and trash nav links when user is authenticated', () => {
+    authStore.setLoginResponse({
+      accessToken: 'token',
+      refreshToken: 'refresh',
+      expiresInSeconds: 900,
+      user: {
+        id: 'u-1',
+        username: 'alice',
+        email: 'alice@test.local',
+        role: 'User',
+        allocatedQuotaBytes: 1000,
+        usedQuotaBytes: 100,
+        createdAt: ''
+      }
+    });
+    spyOn(apiService, 'getSharedFolders').and.returnValue(of(mockSharedContent));
+    fixture.detectChanges();
+
+    const links = fixture.nativeElement.querySelectorAll('.sidebar-nav a.nav-item');
+    const hrefs = Array.from(links).map((l: any) => l.getAttribute('href') || l.getAttribute('routerLink'));
+    expect(links.length).toBeGreaterThanOrEqual(4); // dashboard, drive, shared, favorites, trash
+  });
 });

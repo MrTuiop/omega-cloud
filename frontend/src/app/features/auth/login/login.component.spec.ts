@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { LoginComponent } from './login.component';
 import { ApiService } from '../../../core/services/api.service';
@@ -66,5 +66,11 @@ describe('LoginComponent', () => {
 
     expect(apiService.login).toHaveBeenCalled();
     expect(authStore.setLoginResponse).toHaveBeenCalledWith(mockRes);
+  });
+
+  it('should navigate to /shared when goToShared is called', () => {
+    const routerSpy = spyOn(TestBed.inject(Router), 'navigate');
+    component.goToShared();
+    expect(routerSpy).toHaveBeenCalledWith(['/shared']);
   });
 });

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../../core/services/api.service';
 import { SignalRService } from '../../../core/services/signalr.service';
+import { I18nService } from '../../../core/services/i18n.service';
 import {
   StorageNode,
   GenerateNodeTokenRequest,
@@ -14,9 +15,11 @@ import {
 import { GlassCardComponent } from '../../../shared/components/glass-card/glass-card.component';
 import { GlassButtonComponent } from '../../../shared/components/glass-button/glass-button.component';
 import { GlassModalComponent } from '../../../shared/components/glass-modal/glass-modal.component';
+import { GlassDropdownComponent, DropdownOption } from '../../../shared/components/glass-dropdown/glass-dropdown.component';
 import { ProgressRingComponent } from '../../../shared/components/progress-ring/progress-ring.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-storage-nodes',
@@ -27,30 +30,32 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
     GlassCardComponent,
     GlassButtonComponent,
     GlassModalComponent,
+    GlassDropdownComponent,
     ProgressRingComponent,
     FileSizePipe,
-    RelativeTimePipe
+    RelativeTimePipe,
+    TranslatePipe
   ],
   template: `
     <div class="page-container anim-fade-in">
       <!-- Header -->
       <div class="page-header">
         <div class="header-titles">
-          <h1 class="page-title">Storage Nodes & Fleet</h1>
-          <p class="page-subtitle">Distributed storage daemons, direct pre-signed URLs, disk usage & live telemetry.</p>
+          <h1 class="page-title">{{ 'admin.nodes.title' | translate }}</h1>
+          <p class="page-subtitle">{{ 'admin.nodes.subtitle' | translate }}</p>
         </div>
         <div class="header-actions">
           <app-glass-button variant="secondary" size="md" (btnClick)="loadNodes()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            Refresh
+            {{ 'admin.nodes.refresh' | translate }}
           </app-glass-button>
           <app-glass-button variant="primary" size="md" (btnClick)="openGenerateTokenModal()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 2l-2 2m-6 6l7-7m-7 7l-2-2m-4 4l-4 4a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l4-4m4-4l2 2m-2-2l-4-4"></path>
             </svg>
-            Generate Node Token
+            {{ 'admin.nodes.generateToken' | translate }}
           </app-glass-button>
         </div>
       </div>
@@ -59,36 +64,36 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <div class="stats-grid">
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Total Nodes</div>
+            <div class="stat-label">{{ 'admin.nodes.totalNodes' | translate }}</div>
             <div class="stat-value">{{ nodes().length }}</div>
-            <div class="stat-sub">{{ remoteNodesCount() }} remote daemons, {{ localNodesCount() }} local</div>
+            <div class="stat-sub">{{ 'admin.nodes.nodeCounts' | translate:{ remote: remoteNodesCount(), local: localNodesCount() } }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Fleet Status</div>
+            <div class="stat-label">{{ 'admin.nodes.fleetStatus' | translate }}</div>
             <div class="stat-value fleet-status">
               <span class="status-indicator-dot"></span>
-              {{ onlineNodesCount() }} / {{ nodes().length }} Online
+              {{ 'admin.nodes.onlineCount' | translate:{ online: onlineNodesCount(), total: nodes().length } }}
             </div>
-            <div class="stat-sub">{{ offlineNodesCount() }} offline / unreachable</div>
+            <div class="stat-sub">{{ 'admin.nodes.offlineCount' | translate:{ count: offlineNodesCount() } }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Total Fleet Storage</div>
+            <div class="stat-label">{{ 'admin.nodes.totalCapacity' | translate }}</div>
             <div class="stat-value">{{ totalFleetCapacity() | fileSize }}</div>
-            <div class="stat-sub">{{ totalFleetAvailable() | fileSize }} available</div>
+            <div class="stat-sub">{{ 'admin.nodes.availableSpace' | translate:{ size: (totalFleetAvailable() | fileSize) } }}</div>
           </div>
         </app-glass-card>
 
         <app-glass-card padding="18px">
           <div class="stat-card">
-            <div class="stat-label">Fleet Utilization</div>
+            <div class="stat-label">{{ 'admin.nodes.fleetUtilization' | translate }}</div>
             <div class="stat-value">{{ fleetUsagePercentage() }}%</div>
-            <div class="stat-sub">{{ totalFleetUsed() | fileSize }} used across nodes</div>
+            <div class="stat-sub">{{ 'admin.nodes.usedSpace' | translate:{ size: (totalFleetUsed() | fileSize) } }}</div>
           </div>
         </app-glass-card>
       </div>
@@ -97,7 +102,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       @if (isLoading()) {
         <div class="loading-state">
           <div class="loading-spinner"></div>
-          <span>Loading storage nodes...</span>
+          <span>{{ 'admin.nodes.loading' | translate }}</span>
         </div>
       } @else if (nodes().length === 0) {
         <app-glass-card padding="50px">
@@ -108,9 +113,9 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
               <line x1="6" y1="6" x2="6.01" y2="6"></line>
               <line x1="6" y1="18" x2="6.01" y2="18"></line>
             </svg>
-            <h3>No storage nodes registered</h3>
-            <p>Generate a node registration token to connect your first storage daemon.</p>
-            <app-glass-button variant="primary" (btnClick)="openGenerateTokenModal()">Generate Token</app-glass-button>
+            <h3>{{ 'admin.nodes.noNodes' | translate }}</h3>
+            <p>{{ 'admin.nodes.noNodesHint' | translate }}</p>
+            <app-glass-button variant="primary" (btnClick)="openGenerateTokenModal()">{{ 'admin.nodes.generateToken' | translate }}</app-glass-button>
           </div>
         </app-glass-card>
       } @else {
@@ -138,7 +143,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                     <div class="node-meta">
                       <h3 class="node-name">{{ n.name }}</h3>
                       <div class="node-badges">
-                        <span class="type-badge">{{ n.type }}</span>
+                        <span class="type-badge">{{ n.type === 'RemoteDaemon' ? ('admin.nodes.remoteDaemon' | translate) : ('admin.nodes.masterLocal' | translate) }}</span>
                         @if (n.type === 'RemoteDaemon') {
                           <span class="nat-badge" [class.nat-badge--nat]="n.isBehindNat">
                             {{ n.isBehindNat ? 'NAT Fallback' : 'Direct Access' }}
@@ -169,20 +174,20 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                   </div>
                   <div class="storage-info">
                     <div class="storage-row">
-                      <span class="storage-label">Used Space</span>
+                      <span class="storage-label">{{ 'storage.used' | translate }}</span>
                       <span class="storage-val">{{ n.usedSpaceBytes | fileSize }}</span>
                     </div>
                     <div class="storage-row">
-                      <span class="storage-label">Available</span>
+                      <span class="storage-label">{{ 'storage.available' | translate }}</span>
                       <span class="storage-val">{{ n.availableSpaceBytes | fileSize }}</span>
                     </div>
                     <div class="storage-row">
-                      <span class="storage-label">Total Capacity</span>
+                      <span class="storage-label">{{ 'storage.total' | translate }}</span>
                       <span class="storage-val">{{ n.totalSpaceBytes | fileSize }}</span>
                     </div>
                     @if (n.maxCapacityBytes) {
                       <div class="storage-row">
-                        <span class="storage-label">Max Limit</span>
+                        <span class="storage-label">{{ 'admin.nodes.capacityLimit' | translate }}</span>
                         <span class="storage-val">{{ n.maxCapacityBytes | fileSize }}</span>
                       </div>
                     }
@@ -209,7 +214,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                   </div>
 
                   <div class="metric-item">
-                    <span class="metric-label">CPU Load</span>
+                    <span class="metric-label">{{ 'admin.health.cpuLoad' | translate }}</span>
                     <span class="metric-value">
                       @if (n.cpuLoad !== null && n.cpuLoad !== undefined) {
                         {{ n.cpuLoad }}%
@@ -256,7 +261,7 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                     </svg>
-                    Ping Node
+                    {{ 'admin.nodes.ping' | translate }}
                   </app-glass-button>
 
                   <div class="footer-btn-group">
@@ -286,29 +291,29 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Generate Token Modal -->
       <app-glass-modal
         [isOpen]="generateTokenModalOpen()"
-        title="Generate Node Registration Key"
+        [title]="'admin.nodes.tokenModalTitle' | translate"
         (close)="generateTokenModalOpen.set(false)"
       >
         @if (!generatedToken()) {
           <div class="modal-form">
             <p class="modal-note">
-              This one-time key is used by the <strong>Omega Storage Node Daemon</strong> to authenticate and establish a secure HMAC pairing with the Master Server.
+              {{ 'admin.nodes.tokenModalSubtitle' | translate }}
             </p>
 
-            <label>Node Name</label>
+            <label>{{ 'admin.nodes.nodeName' | translate }}</label>
             <input
               type="text"
               [(ngModel)]="newNodeName"
               placeholder="e.g. Home-Synology-NAS or VPS-Worker-1"
             />
 
-            <label>Node Type</label>
-            <select [(ngModel)]="newNodeType" class="modal-select">
-              <option value="RemoteDaemon">Remote Storage Daemon</option>
-              <option value="LocalDisk">Local Disk Mount</option>
-            </select>
+            <label>{{ 'admin.nodes.nodeType' | translate }}</label>
+            <app-glass-dropdown
+              [(value)]="newNodeType"
+              [options]="nodeTypeOptions"
+            ></app-glass-dropdown>
 
-            <label>Description (Optional)</label>
+            <label>{{ 'admin.users.description' | translate }}</label>
             <input
               type="text"
               [(ngModel)]="newNodeDescription"
@@ -323,13 +328,13 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             </div>
-            <h3>Registration Key Generated!</h3>
-            <p>Save this key now. It will not be shown again.</p>
+            <h3>{{ 'admin.nodes.tokenGenerated' | translate }}</h3>
+            <p>{{ 'admin.nodes.tokenCopyHint' | translate }}</p>
 
             <div class="token-box">
               <code>{{ generatedToken()?.registrationKey }}</code>
               <button class="copy-btn" (click)="copyToken()">
-                {{ isCopied() ? 'Copied!' : 'Copy' }}
+                {{ isCopied() ? ('admin.nodes.copied' | translate) : ('admin.nodes.copy' | translate) }}
               </button>
             </div>
 
@@ -346,17 +351,17 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 
         <div footer>
           @if (!generatedToken()) {
-            <app-glass-button variant="secondary" (btnClick)="generateTokenModalOpen.set(false)">Cancel</app-glass-button>
+            <app-glass-button variant="secondary" (btnClick)="generateTokenModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
             <app-glass-button
               variant="primary"
               [disabled]="isGeneratingToken() || !newNodeName.trim()"
               [loading]="isGeneratingToken()"
               (btnClick)="submitGenerateToken()"
             >
-              Generate Token
+              {{ 'admin.nodes.generateToken' | translate }}
             </app-glass-button>
           } @else {
-            <app-glass-button variant="primary" (btnClick)="closeTokenModal()">Done</app-glass-button>
+            <app-glass-button variant="primary" (btnClick)="closeTokenModal()">{{ 'admin.nodes.done' | translate }}</app-glass-button>
           }
         </div>
       </app-glass-modal>
@@ -364,39 +369,79 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Edit Node Modal -->
       <app-glass-modal
         [isOpen]="editNodeModalOpen()"
-        [title]="'Edit Node: ' + (selectedNode()?.name || '')"
+        [title]="'admin.nodes.editNode' | translate:{ name: selectedNode()?.name || '' }"
         (close)="editNodeModalOpen.set(false)"
       >
         @if (selectedNode()) {
           <div class="modal-form">
-            <label>Node Name</label>
+            <!-- Physical Disk Telemetry -->
+            @if (selectedNode()?.totalSpaceBytes) {
+              <div class="physical-disk-info">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                  <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                  <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+                <span>
+                  {{ 'admin.nodes.physicalDisk' | translate:{ total: (selectedNode()?.totalSpaceBytes | fileSize), free: (selectedNode()?.availableSpaceBytes | fileSize) } }}
+                </span>
+              </div>
+            }
+
+            <label>{{ 'admin.nodes.nodeName' | translate }}</label>
             <input type="text" [(ngModel)]="editNodeName" />
 
-            <label>Public Base URL (for direct client downloads)</label>
+            <label>{{ 'admin.nodes.baseUrl' | translate }}</label>
             <input type="text" [(ngModel)]="editNodeBaseUrl" placeholder="https://node1.mydomain.com:5001" />
 
             <label class="checkbox-label">
               <input type="checkbox" [(ngModel)]="editNodeIsBehindNat" />
-              <span>Behind NAT / Firewall (stream traffic through Master fallback)</span>
+              <span>{{ 'admin.nodes.natLabel' | translate }}</span>
             </label>
 
-            <label>Max Capacity Limit (Bytes)</label>
-            <input type="number" [(ngModel)]="editNodeMaxCapacityBytes" placeholder="e.g. 1099511627776 for 1 TB" />
+            <label>{{ 'admin.nodes.capacityLimit' | translate }}</label>
+            <div class="capacity-row">
+              <input
+                type="number"
+                [(ngModel)]="editNodeCapacityValue"
+                (ngModelChange)="onCapacityChange()"
+                min="0"
+                step="any"
+                placeholder="e.g. 500"
+              />
+              <div class="capacity-unit-dropdown">
+                <app-glass-dropdown
+                  [(value)]="editNodeCapacityUnit"
+                  [options]="capacityUnitOptions"
+                  (valueChange)="onCapacityChange()"
+                ></app-glass-dropdown>
+              </div>
+            </div>
 
-            <label>Status Override</label>
-            <select [(ngModel)]="editNodeStatus" class="modal-select">
-              <option value="Online">Online</option>
-              <option value="Degraded">Degraded</option>
-              <option value="Offline">Offline</option>
-              <option value="Maintenance">Maintenance</option>
-            </select>
+            @if (isCapacityExceedingDisk) {
+              <div class="form-error">
+                {{ 'admin.nodes.exceedDiskWarning' | translate:{ total: (selectedNode()?.totalSpaceBytes | fileSize) } }}
+              </div>
+            }
+
+            <label>{{ 'admin.nodes.statusOverride' | translate }}</label>
+            <app-glass-dropdown
+              [(value)]="editNodeStatus"
+              [options]="nodeStatusOptions"
+            ></app-glass-dropdown>
           </div>
         }
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="editNodeModalOpen.set(false)">Cancel</app-glass-button>
-          <app-glass-button variant="primary" [loading]="isSavingNode()" (btnClick)="submitEditNode()">
-            Save Node
+          <app-glass-button variant="secondary" (btnClick)="editNodeModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
+          <app-glass-button
+            variant="primary"
+            [disabled]="isCapacityExceedingDisk"
+            [loading]="isSavingNode()"
+            (btnClick)="submitEditNode()"
+          >
+            {{ 'admin.nodes.saveNode' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -404,18 +449,17 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       <!-- Delete Node Modal -->
       <app-glass-modal
         [isOpen]="deleteNodeModalOpen()"
-        title="Archive / Remove Storage Node"
+        [title]="'admin.nodes.deleteNode' | translate"
         (close)="deleteNodeModalOpen.set(false)"
       >
         <p>
-          Are you sure you want to disconnect storage node <strong>{{ selectedNode()?.name }}</strong>?
-          New uploads will no longer target this node.
+          {{ 'admin.nodes.deleteConfirm' | translate:{ name: selectedNode()?.name || '' } }}
         </p>
 
         <div footer>
-          <app-glass-button variant="secondary" (btnClick)="deleteNodeModalOpen.set(false)">Cancel</app-glass-button>
+          <app-glass-button variant="secondary" (btnClick)="deleteNodeModalOpen.set(false)">{{ 'common.cancel' | translate }}</app-glass-button>
           <app-glass-button variant="danger" [loading]="isSavingNode()" (btnClick)="submitDeleteNode()">
-            Disconnect Node
+            {{ 'admin.nodes.disconnect' | translate }}
           </app-glass-button>
         </div>
       </app-glass-modal>
@@ -826,6 +870,40 @@ import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
       outline: none;
     }
 
+    .capacity-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+
+      input[type="number"] {
+        flex: 1;
+        height: 42px;
+      }
+
+      .capacity-unit-dropdown {
+        width: 110px;
+        flex-shrink: 0;
+      }
+    }
+
+    .physical-disk-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: var(--omega-radius-md);
+      @include glass-sunken;
+      color: var(--omega-accent);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .form-error {
+      font-size: 12px;
+      color: var(--omega-danger);
+      margin-top: 4px;
+    }
+
     .checkbox-label {
       display: flex;
       align-items: center;
@@ -961,12 +1039,38 @@ export class StorageNodesComponent implements OnInit, OnDestroy {
   generatedToken = signal<NodeRegistrationToken | null>(null);
   isCopied = signal<boolean>(false);
 
+  // Dropdown options
+  readonly nodeTypeOptions: DropdownOption[] = [
+    { value: 'RemoteDaemon', label: 'Remote Storage Daemon' },
+    { value: 'LocalDisk', label: 'Local Disk Mount' }
+  ];
+
+  readonly nodeStatusOptions: DropdownOption[] = [
+    { value: 'Online', label: 'Online' },
+    { value: 'Degraded', label: 'Degraded' },
+    { value: 'Offline', label: 'Offline' },
+    { value: 'Maintenance', label: 'Maintenance' }
+  ];
+
+  readonly capacityUnitOptions: DropdownOption[] = [
+    { value: 'GB', label: 'GB' },
+    { value: 'TB', label: 'TB' }
+  ];
+
   // Edit Node Form
   editNodeName = '';
   editNodeBaseUrl = '';
   editNodeIsBehindNat = false;
   editNodeStatus = 'Online';
   editNodeMaxCapacityBytes: number | undefined = undefined;
+  editNodeCapacityValue: number | null = null;
+  editNodeCapacityUnit = 'GB';
+
+  get isCapacityExceedingDisk(): boolean {
+    const node = this.selectedNode();
+    if (!node || !node.totalSpaceBytes || !this.editNodeMaxCapacityBytes) return false;
+    return this.editNodeMaxCapacityBytes > node.totalSpaceBytes;
+  }
 
   private sub: Subscription | null = null;
 
@@ -1096,12 +1200,35 @@ export class StorageNodesComponent implements OnInit, OnDestroy {
     this.editNodeIsBehindNat = node.isBehindNat;
     this.editNodeStatus = node.status;
     this.editNodeMaxCapacityBytes = node.maxCapacityBytes;
+    if (node.maxCapacityBytes && node.maxCapacityBytes > 0) {
+      const tb = 1024 * 1024 * 1024 * 1024;
+      const gb = 1024 * 1024 * 1024;
+      if (node.maxCapacityBytes >= tb && node.maxCapacityBytes % tb === 0) {
+        this.editNodeCapacityUnit = 'TB';
+        this.editNodeCapacityValue = node.maxCapacityBytes / tb;
+      } else {
+        this.editNodeCapacityUnit = 'GB';
+        this.editNodeCapacityValue = Math.round((node.maxCapacityBytes / gb) * 10) / 10;
+      }
+    } else {
+      this.editNodeCapacityValue = null;
+      this.editNodeCapacityUnit = 'GB';
+    }
     this.editNodeModalOpen.set(true);
+  }
+
+  onCapacityChange(): void {
+    if (this.editNodeCapacityValue === null || this.editNodeCapacityValue === undefined || this.editNodeCapacityValue <= 0) {
+      this.editNodeMaxCapacityBytes = undefined;
+    } else {
+      const mult = this.editNodeCapacityUnit === 'TB' ? 1024 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024;
+      this.editNodeMaxCapacityBytes = Math.round(this.editNodeCapacityValue * mult);
+    }
   }
 
   submitEditNode(): void {
     const node = this.selectedNode();
-    if (!node) return;
+    if (!node || this.isCapacityExceedingDisk) return;
 
     this.isSavingNode.set(true);
     const req: UpdateStorageNodeRequest = {

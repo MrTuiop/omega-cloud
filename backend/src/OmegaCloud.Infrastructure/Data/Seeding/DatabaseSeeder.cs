@@ -15,17 +15,20 @@ public class DatabaseSeeder
     private readonly IPasswordHasher _passwordHasher;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DatabaseSeeder> _logger;
+    private readonly IDiskTelemetryProvider? _diskTelemetryProvider;
 
     public DatabaseSeeder(
         AppDbContext dbContext,
         IPasswordHasher passwordHasher,
         IConfiguration configuration,
-        ILogger<DatabaseSeeder> logger)
+        ILogger<DatabaseSeeder> logger,
+        IDiskTelemetryProvider? diskTelemetryProvider = null)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _configuration = configuration;
         _logger = logger;
+        _diskTelemetryProvider = diskTelemetryProvider;
     }
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
@@ -72,15 +75,27 @@ public class DatabaseSeeder
 
     private async Task SeedLocalStorageNodeAsync(CancellationToken cancellationToken)
     {
-        var hasLocalNode = await _dbContext.StorageNodes.AnyAsync(n => n.Type == StorageNodeType.LocalDisk, cancellationToken);
-        if (hasLocalNode)
+        var localNode = await _dbContext.StorageNodes.FirstOrDefaultAsync(n => n.Type == StorageNodeType.LocalDisk, cancellationToken);
+        var diskInfo = _diskTelemetryProvider?.GetMasterDiskSpace()
+            ?? new DiskSpaceInfo(100L * 1024 * 1024 * 1024, 80L * 1024 * 1024 * 1024);
+
+        if (localNode != null)
         {
+            // If existing local node still has the legacy hardcoded 10 TB default, update it to physical telemetry
+            if (localNode.MaxCapacityBytes == 10_995_116_277_760L && diskInfo.TotalBytes > 0)
+            {
+                localNode.MaxCapacityBytes = diskInfo.TotalBytes;
+                localNode.TotalSpaceBytes = diskInfo.TotalBytes;
+                localNode.AvailableSpaceBytes = diskInfo.AvailableFreeBytes;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Migrated legacy Master Local Storage node capacity to physical disk size: {TotalBytes} bytes", diskInfo.TotalBytes);
+            }
             return;
         }
 
         _logger.LogInformation("No local storage node found. Seeding default Master Local Storage node.");
 
-        var localNode = new StorageNode
+        localNode = new StorageNode
         {
             Id = MasterLocalStorageNodeId,
             Name = "Master Local Storage",
@@ -90,9 +105,9 @@ public class DatabaseSeeder
             BaseUrl = null,
             IsBehindNat = false,
             Status = StorageNodeStatus.Online,
-            TotalSpaceBytes = 10_995_116_277_760L, // 10 TB default
-            AvailableSpaceBytes = 10_995_116_277_760L,
-            MaxCapacityBytes = 10_995_116_277_760L,
+            TotalSpaceBytes = diskInfo.TotalBytes,
+            AvailableSpaceBytes = diskInfo.AvailableFreeBytes,
+            MaxCapacityBytes = diskInfo.TotalBytes,
             LastHeartbeatAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         };

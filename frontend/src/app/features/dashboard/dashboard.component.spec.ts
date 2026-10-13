@@ -81,4 +81,9 @@ describe('DashboardComponent', () => {
   it('should calculate available quota bytes correctly', () => {
     expect(component.availableQuotaBytes()).toBe(7500);
   });
+
+  it('should provide language options for glass dropdown', () => {
+    expect(component.languageOptions.length).toBeGreaterThan(0);
+    expect(component.languageOptions.some(l => l.value === 'ru')).toBeTrue();
+  });
 });

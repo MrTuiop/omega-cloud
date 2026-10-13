@@ -86,7 +86,29 @@ public static class FileHelper
         int counter = 1;
         while (true)
         {
-            var candidate = $"{nameWithoutExt} ({counter}){ext}";
+            var candidate = string.IsNullOrEmpty(nameWithoutExt)
+                ? $"{fileName} ({counter})"
+                : $"{nameWithoutExt} ({counter}){ext}";
+
+            if (!existsFunc(candidate))
+            {
+                return candidate;
+            }
+            counter++;
+        }
+    }
+
+    public static string GenerateUniqueFolderName(string folderName, Func<string, bool> existsFunc)
+    {
+        if (!existsFunc(folderName))
+        {
+            return folderName;
+        }
+
+        int counter = 1;
+        while (true)
+        {
+            var candidate = $"{folderName} ({counter})";
             if (!existsFunc(candidate))
             {
                 return candidate;
@@ -95,3 +117,4 @@ public static class FileHelper
         }
     }
 }
+

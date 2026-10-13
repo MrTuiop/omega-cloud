@@ -177,6 +177,33 @@ describe('StorageNodesComponent', () => {
     expect(component.editNodeModalOpen()).toBeFalse();
   });
 
+  it('should prevent saving node when capacity exceeds physical disk', () => {
+    spyOn(apiService, 'updateAdminNode');
+
+    component.openEditNodeModal(mockNodes[0]); // totalSpaceBytes = 1_000_000
+    component.editNodeMaxCapacityBytes = 5_000_000;
+
+    expect(component.isCapacityExceedingDisk).toBeTrue();
+    component.submitEditNode();
+
+    expect(apiService.updateAdminNode).not.toHaveBeenCalled();
+  });
+
+  it('should recalculate max capacity bytes on capacity unit/value change', () => {
+    component.openEditNodeModal(mockNodes[0]);
+    component.editNodeCapacityValue = 2;
+    component.editNodeCapacityUnit = 'TB';
+    component.onCapacityChange();
+
+    expect(component.editNodeMaxCapacityBytes).toBe(2 * 1024 * 1024 * 1024 * 1024);
+
+    component.editNodeCapacityValue = 500;
+    component.editNodeCapacityUnit = 'GB';
+    component.onCapacityChange();
+
+    expect(component.editNodeMaxCapacityBytes).toBe(500 * 1024 * 1024 * 1024);
+  });
+
   it('should delete storage node', () => {
     spyOn(apiService, 'deleteAdminNode').and.returnValue(of(void 0));
 

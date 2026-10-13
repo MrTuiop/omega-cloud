@@ -15,6 +15,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { GlassButtonComponent } from '../../shared/components/glass-button/glass-button.component';
 import { GlassCardComponent } from '../../shared/components/glass-card/glass-card.component';
 import { GlassModalComponent } from '../../shared/components/glass-modal/glass-modal.component';
+import { GlassDropdownComponent, DropdownOption } from '../../shared/components/glass-dropdown/glass-dropdown.component';
 import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-queue-modal.component';
 
 @Component({
@@ -30,6 +31,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
     GlassButtonComponent,
     GlassCardComponent,
     GlassModalComponent,
+    GlassDropdownComponent,
     UploadQueueModalComponent
   ],
   template: `
@@ -168,16 +170,13 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
           <div class="bar-right">
             <!-- Language Selector -->
             <div class="lang-selector">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="2" y1="12" x2="22" y2="12"></line>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-              </svg>
-              <select [ngModel]="i18n.currentLang()" (ngModelChange)="i18n.setLanguage($event)">
-                @for (lang of i18n.supportedLanguages; track lang.code) {
-                  <option [value]="lang.code">{{ lang.label }}</option>
-                }
-              </select>
+              <app-glass-dropdown
+                size="sm"
+                variant="subtle"
+                [options]="languageOptions"
+                [value]="i18n.currentLang()"
+                (valueChange)="i18n.setLanguage($event)"
+              ></app-glass-dropdown>
             </div>
           </div>
         </header>
@@ -436,9 +435,16 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       border-bottom: 1px solid var(--omega-glass-border-subtle);
 
       .brand-icon {
-        color: var(--omega-accent);
+        width: 36px;
+        height: 36px;
+        border-radius: var(--omega-radius-md);
+        background: var(--omega-accent-gradient);
+        color: #ffffff;
         display: flex;
         align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px 0 rgba(0, 113, 227, 0.4);
+        flex-shrink: 0;
       }
 
       .brand-text {
@@ -1054,6 +1060,11 @@ export class DashboardComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly uploader = inject(ResumableUploaderService);
+
+  readonly languageOptions: DropdownOption[] = SUPPORTED_LANGUAGES.map(l => ({
+    value: l.code,
+    label: l.shortLabel
+  }));
 
   readonly recentFiles = signal<FileItem[]>([]);
   readonly loadingRecent = signal<boolean>(false);
