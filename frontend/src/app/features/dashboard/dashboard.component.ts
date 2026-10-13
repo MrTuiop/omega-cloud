@@ -82,6 +82,21 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
             <span>{{ 'nav.shared' | translate }}</span>
           </a>
 
+          <a routerLink="/drive" [queryParams]="{ tab: 'favorites' }" class="nav-item" [title]="'nav.favorites' | translate">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span>{{ 'nav.favorites' | translate }}</span>
+          </a>
+
+          <a routerLink="/drive" [queryParams]="{ tab: 'trash' }" class="nav-item" [title]="'nav.trash' | translate">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>{{ 'nav.trash' | translate }}</span>
+          </a>
+
           @if (authStore.isAdmin()) {
             <a routerLink="/admin" class="nav-item nav-item--admin">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1015,7 +1030,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       width: 100%;
     }
 
-    /* Mobile Drawer */
+    /* Mobile Drawer & Performance */
     @media (max-width: 768px) {
       .sidebar {
         position: fixed;
@@ -1024,6 +1039,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
         bottom: 0;
         transform: translateX(-100%);
         box-shadow: 0 0 30px rgba(0,0,0,0.4);
+        will-change: transform;
 
         &--open {
           transform: translateX(0);
@@ -1038,8 +1054,28 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.45);
-        backdrop-filter: blur(8px);
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
         z-index: 49;
+      }
+
+      .top-bar {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      .dash-stage {
+        padding: 16px 14px;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+
+      .stat-card,
+      .recent-file-card,
+      .shared-item-card,
+      .pinned-card {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
       }
 
       .bar-left .hamburger-btn {

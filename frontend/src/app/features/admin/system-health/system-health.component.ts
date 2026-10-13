@@ -143,7 +143,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                     <span class="g-stat-val">{{ health()!.usedMemoryBytes | fileSize }}</span>
                   </div>
                   <div class="g-stat-row">
-                    <span class="g-stat-lbl">{{ 'storage.available' | translate }}</span>
+                    <span class="g-stat-lbl">{{ 'admin.health.physicalRam' | translate }}</span>
                     <span class="g-stat-val">{{ health()!.totalMemoryBytes | fileSize }}</span>
                   </div>
                 </div>
@@ -165,11 +165,11 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   </div>
                   <div>
                     <h3 class="gauge-name">{{ 'admin.nodes.totalCapacity' | translate }}</h3>
-                    <span class="gauge-desc">Master disk storage partition</span>
+                    <span class="gauge-desc">{{ 'admin.health.storageDesc' | translate }}</span>
                   </div>
                 </div>
                 <span class="gauge-badge">
-                  {{ health()!.storageUsagePercentage }}% Used
+                  {{ health()!.storageUsagePercentage }}% {{ 'storage.used' | translate }}
                 </span>
               </div>
 
@@ -219,7 +219,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   <strong>{{ health()!.databaseLatencyMs }} ms</strong>
                 </div>
                 <div class="detail-line">
-                  <span>Status:</span>
+                  <span>{{ 'admin.health.status' | translate }}:</span>
                   <span class="val-green">{{ 'admin.health.connected' | translate }}</span>
                 </div>
               </div>
@@ -237,15 +237,15 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   </svg>
                 </div>
                 <span class="infra-title">{{ 'admin.nodes.fleetStatus' | translate }}</span>
-                <span class="node-fleet-count">{{ health()!.totalNodes }} Registered</span>
+                <span class="node-fleet-count">{{ health()!.totalNodes }} {{ 'admin.nodes.registered' | translate }}</span>
               </div>
               <div class="infra-details">
                 <div class="detail-line">
-                  <span>Online:</span>
+                  <span>{{ 'admin.nodes.statusOnline' | translate }}:</span>
                   <strong class="val-green">{{ health()!.onlineNodes }}</strong>
                 </div>
                 <div class="detail-line">
-                  <span>Offline:</span>
+                  <span>{{ 'admin.nodes.statusOffline' | translate }}:</span>
                   <span [class.val-red]="health()!.offlineNodes > 0">{{ health()!.offlineNodes }}</span>
                 </div>
               </div>
@@ -263,7 +263,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   </svg>
                 </div>
                 <span class="infra-title">{{ 'admin.users.title' | translate }}</span>
-                <span class="user-count">{{ health()!.totalUsers }} Users</span>
+                <span class="user-count">{{ health()!.totalUsers }} {{ 'admin.users.usersCount' | translate }}</span>
               </div>
               <div class="infra-details">
                 <div class="detail-line">
@@ -271,7 +271,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   <strong>{{ health()!.activeSessionsCount }}</strong>
                 </div>
                 <div class="detail-line">
-                  <span>Auth Mechanism:</span>
+                  <span>{{ 'admin.health.authMechanism' | translate }}:</span>
                   <span>Argon2id + JWT</span>
                 </div>
               </div>
@@ -313,7 +313,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
               </div>
 
               <div class="runtime-item">
-                <span class="runtime-lbl">Server Started At</span>
+                <span class="runtime-lbl">{{ 'admin.health.startedAt' | translate }}</span>
                 <span class="runtime-val">{{ health()!.startedAt | date:'yyyy-MM-dd HH:mm:ss' }}</span>
               </div>
             </div>

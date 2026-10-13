@@ -654,24 +654,24 @@ export class AuditLogComponent implements OnInit {
 
   readonly actionOptions = computed<DropdownOption[]>(() => [
     { value: 'All', label: this.i18n.t('admin.audit.allActions') },
-    { value: 'UserLogin', label: 'User Login' },
-    { value: 'UserLogout', label: 'User Logout' },
-    { value: 'UserCreated', label: 'User Created' },
-    { value: 'UserUpdated', label: 'User Updated' },
-    { value: 'PasswordReset', label: 'Password Reset' },
-    { value: 'SessionRevoked', label: 'Session Revoked' },
-    { value: 'SessionsRevoked', label: 'Sessions Revoked' },
-    { value: 'UserDeleted', label: 'User Deleted' },
-    { value: 'FileUploaded', label: 'File Uploaded' },
-    { value: 'FileDownloaded', label: 'File Downloaded' },
-    { value: 'FileDeleted', label: 'File Deleted' },
-    { value: 'TrashEmptied', label: 'Trash Emptied' },
-    { value: 'NodeRegistered', label: 'Node Registered' },
-    { value: 'NodeWentOffline', label: 'Node Went Offline' },
-    { value: 'NodeTokenGenerated', label: 'Node Token Generated' },
-    { value: 'NodePinged', label: 'Node Pinged' },
-    { value: 'NodeUpdated', label: 'Node Updated' },
-    { value: 'NodeDeleted', label: 'Node Deleted' }
+    { value: 'UserLogin', label: this.i18n.t('admin.audit.action.userLogin') },
+    { value: 'UserLogout', label: this.i18n.t('admin.audit.action.userLogout') },
+    { value: 'UserCreated', label: this.i18n.t('admin.audit.action.userCreated') },
+    { value: 'UserUpdated', label: this.i18n.t('admin.audit.action.userUpdated') },
+    { value: 'PasswordReset', label: this.i18n.t('admin.audit.action.passwordReset') },
+    { value: 'SessionRevoked', label: this.i18n.t('admin.audit.action.sessionRevoked') },
+    { value: 'SessionsRevoked', label: this.i18n.t('admin.audit.action.sessionsRevoked') },
+    { value: 'UserDeleted', label: this.i18n.t('admin.audit.action.userDeleted') },
+    { value: 'FileUploaded', label: this.i18n.t('admin.audit.action.fileUploaded') },
+    { value: 'FileDownloaded', label: this.i18n.t('admin.audit.action.fileDownloaded') },
+    { value: 'FileDeleted', label: this.i18n.t('admin.audit.action.fileDeleted') },
+    { value: 'TrashEmptied', label: this.i18n.t('admin.audit.action.trashEmptied') },
+    { value: 'NodeRegistered', label: this.i18n.t('admin.audit.action.nodeRegistered') },
+    { value: 'NodeWentOffline', label: this.i18n.t('admin.audit.action.nodeWentOffline') },
+    { value: 'NodeTokenGenerated', label: this.i18n.t('admin.audit.action.nodeTokenGenerated') },
+    { value: 'NodePinged', label: this.i18n.t('admin.audit.action.nodePinged') },
+    { value: 'NodeUpdated', label: this.i18n.t('admin.audit.action.nodeUpdated') },
+    { value: 'NodeDeleted', label: this.i18n.t('admin.audit.action.nodeDeleted') }
   ]);
 
   inspectModalOpen = signal<boolean>(false);

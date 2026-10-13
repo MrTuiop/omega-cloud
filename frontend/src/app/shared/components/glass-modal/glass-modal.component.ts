@@ -118,6 +118,27 @@ import { CommonModule } from '@angular/common';
         display: none;
       }
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .modal-backdrop {
+        padding: 12px;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(0, 0, 0, 0.65);
+      }
+
+      .modal-dialog {
+        border-radius: var(--omega-radius-lg);
+        max-height: 94vh;
+      }
+
+      .modal-header,
+      .modal-body,
+      .modal-footer {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+    }
   `]
 })
 export class GlassModalComponent {

@@ -39,6 +39,11 @@
   transition: #{$prop} #{$duration} var(--omega-ease-spring);
 }
 
+@mixin gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
 // Reusable glass utility classes
 .glass-panel {
   @include glass-surface;

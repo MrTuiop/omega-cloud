@@ -156,7 +156,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   <th>{{ 'admin.users.colQuota' | translate }}</th>
                   <th>{{ 'admin.users.colStatus' | translate }}</th>
                   <th>{{ 'admin.users.colSessions' | translate }}</th>
-                  <th>Last Active</th>
+                  <th>{{ 'admin.users.lastActive' | translate }}</th>
                   <th>{{ 'admin.users.colCreated' | translate }}</th>
                   <th class="actions-header">{{ 'admin.users.colActions' | translate }}</th>
                 </tr>
@@ -314,7 +314,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
           <input
             type="password"
             [(ngModel)]="newPassword"
-            placeholder="Minimum 6 characters"
+            [placeholder]="'admin.users.passwordMinLength' | translate"
             autocomplete="new-password"
           />
 
@@ -411,7 +411,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
             </label>
 
             @if (selectedUser()?.id === authStore.currentUser()?.id) {
-              <div class="modal-notice">Current administrator cannot deactivate or remove admin permissions from their own account.</div>
+              <div class="modal-notice">{{ 'admin.users.cannotModifySelf' | translate }}</div>
             }
 
             @if (formError()) {
@@ -441,14 +441,14 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
       >
         <div class="modal-form">
           <p class="modal-note">
-            Entering a new password will immediately terminate all active sessions for this user.
+            {{ 'admin.users.resetPasswordNotice' | translate }}
           </p>
 
           <label>{{ 'admin.users.newPassword' | translate }}</label>
           <input
             type="password"
             [(ngModel)]="resetPasswordValue"
-            placeholder="At least 6 characters"
+            [placeholder]="'admin.users.passwordMinLength' | translate"
             autocomplete="new-password"
           />
 
@@ -473,11 +473,11 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
       <!-- Revoke Sessions Modal -->
       <app-glass-modal
         [isOpen]="revokeModalOpen()"
-        [title]="'admin.users.sessionsModalTitle' | translate: { username: selectedUser()?.username || '' }"
+        [title]="'admin.users.revokeModalTitle' | translate: { username: selectedUser()?.username || '' }"
         (close)="revokeModalOpen.set(false)"
       >
         <p>
-          {{ 'admin.users.deleteWarning' | translate }}
+          {{ 'admin.users.revokeSessionsWarning' | translate }}
         </p>
 
         <div footer>
@@ -530,7 +530,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                     <div class="session-details-line">
                       <span class="session-ip">{{ s.ipAddress }}</span>
                       <span class="session-dot">•</span>
-                      <span class="session-time" [title]="s.lastActiveAt">Active {{ s.lastActiveAt | relativeTime }}</span>
+                      <span class="session-time" [title]="s.lastActiveAt">{{ s.lastActiveAt | relativeTime }}</span>
                     </div>
                     @if (s.userAgent) {
                       <div class="session-agent" [title]="s.userAgent">{{ s.userAgent }}</div>

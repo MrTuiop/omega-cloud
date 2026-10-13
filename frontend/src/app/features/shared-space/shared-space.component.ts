@@ -1205,6 +1205,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
         bottom: 0;
         transform: translateX(-100%);
         box-shadow: 0 0 30px rgba(0,0,0,0.4);
+        will-change: transform;
 
         &--open {
           transform: translateX(0);
@@ -1219,8 +1220,38 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.45);
-        backdrop-filter: blur(8px);
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
         z-index: 49;
+      }
+
+      .stage-header {
+        padding: 0 14px;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      .stage-content {
+        padding: 14px;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+
+      .folders-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 8px;
+      }
+
+      .files-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 10px;
+      }
+
+      .folder-card,
+      .file-card,
+      .list-wrapper {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
       }
 
       .header-left .hamburger-btn {

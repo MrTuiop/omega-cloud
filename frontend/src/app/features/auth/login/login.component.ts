@@ -6,19 +6,37 @@ import { ApiService } from '../../../core/services/api.service';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { GlassCardComponent } from '../../../shared/components/glass-card/glass-card.component';
 import { GlassButtonComponent } from '../../../shared/components/glass-button/glass-button.component';
+import { GlassDropdownComponent, DropdownOption } from '../../../shared/components/glass-dropdown/glass-dropdown.component';
 import { ThemeService } from '../../../core/services/theme.service';
+import { I18nService } from '../../../core/services/i18n.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule, GlassCardComponent, GlassButtonComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    GlassCardComponent,
+    GlassButtonComponent,
+    GlassDropdownComponent,
+    TranslatePipe
+  ],
   template: `
     <div class="login-wrapper">
       <div class="ambient-glow ambient-glow--1"></div>
       <div class="ambient-glow ambient-glow--2"></div>
 
-      <div class="theme-toggle-top">
-        <button class="theme-btn" (click)="themeService.toggleTheme()" [title]="'Switch to ' + (themeService.isDark() ? 'Light' : 'Dark') + ' mode'">
+      <div class="top-controls">
+        <app-glass-dropdown
+          size="sm"
+          variant="subtle"
+          [options]="languageOptions"
+          [value]="i18n.currentLang()"
+          (valueChange)="i18n.setLanguage($event)"
+        ></app-glass-dropdown>
+
+        <button class="theme-btn" (click)="themeService.toggleTheme()" [title]="'nav.switchTheme' | translate">
           @if (themeService.isDark()) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="5"></circle>
@@ -48,7 +66,7 @@ import { ThemeService } from '../../../core/services/theme.service';
               </svg>
             </div>
             <h1 class="brand-title">Omega Cloud</h1>
-            <p class="brand-subtitle">High-performance private cloud storage</p>
+            <p class="brand-subtitle">{{ 'auth.subtitle' | translate }}</p>
           </div>
 
           @if (errorMessage()) {
@@ -64,7 +82,7 @@ import { ThemeService } from '../../../core/services/theme.service';
 
           <form (ngSubmit)="onSubmit()" class="login-form">
             <div class="form-group">
-              <label for="username">Username or Email</label>
+              <label for="username">{{ 'auth.usernameOrEmail' | translate }}</label>
               <input
                 id="username"
                 type="text"
@@ -77,7 +95,7 @@ import { ThemeService } from '../../../core/services/theme.service';
             </div>
 
             <div class="form-group">
-              <label for="password">Password</label>
+              <label for="password">{{ 'auth.password' | translate }}</label>
               <input
                 id="password"
                 type="password"
@@ -97,13 +115,13 @@ import { ThemeService } from '../../../core/services/theme.service';
                 [loading]="loading()"
                 [disabled]="!username || !password"
               >
-                Sign In
+                {{ 'auth.signIn' | translate }}
               </app-glass-button>
             </div>
           </form>
 
           <div class="shared-space-divider">
-            <span>или</span>
+            <span>{{ 'auth.or' | translate }}</span>
           </div>
 
           <div class="public-actions">
@@ -120,7 +138,7 @@ import { ThemeService } from '../../../core/services/theme.service';
                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
               </svg>
-              <span>Перейти в Общий раздел (без входа)</span>
+              <span>{{ 'auth.goToShared' | translate }}</span>
             </app-glass-button>
           </div>
         </app-glass-card>
@@ -143,11 +161,14 @@ import { ThemeService } from '../../../core/services/theme.service';
       background-image: var(--omega-bg-gradient);
     }
 
-    .theme-toggle-top {
+    .top-controls {
       position: absolute;
       top: 24px;
       right: 28px;
       z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
 
     .theme-btn {
@@ -174,6 +195,8 @@ import { ThemeService } from '../../../core/services/theme.service';
       filter: blur(90px);
       pointer-events: none;
       opacity: 0.5;
+      will-change: transform, opacity;
+      transform: translateZ(0);
 
       &--1 {
         width: 480px;
@@ -191,6 +214,27 @@ import { ThemeService } from '../../../core/services/theme.service';
         bottom: 15%;
         right: 20%;
         animation: pulseGlow 8s ease-in-out infinite alternate;
+      }
+    }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .ambient-glow {
+        filter: blur(40px);
+        animation: none;
+
+        &--1 {
+          width: 260px;
+          height: 260px;
+          top: 10%;
+          left: 10%;
+        }
+
+        &--2 {
+          width: 240px;
+          height: 240px;
+          bottom: 10%;
+          right: 10%;
+        }
       }
     }
 
@@ -344,6 +388,13 @@ export class LoginComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   readonly themeService = inject(ThemeService);
+  readonly i18n = inject(I18nService);
+
+  readonly languageOptions: DropdownOption[] = [
+    { value: 'ru', label: 'Русский (RU)' },
+    { value: 'en', label: 'English (EN)' },
+    { value: 'zh', label: '中文 (ZH)' }
+  ];
 
   username = '';
   password = '';

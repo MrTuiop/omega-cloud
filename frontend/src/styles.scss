@@ -16,7 +16,7 @@ html, body {
   font-family: var(--omega-font-family);
   background: var(--omega-bg-canvas);
   background-image: var(--omega-bg-gradient);
-  background-attachment: fixed;
+  background-attachment: scroll;
   color: var(--omega-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -80,4 +80,26 @@ input, select, textarea {
 // Prevent dragging images
 img {
   -webkit-user-drag: none;
+}
+
+// Mobile touch & scrolling optimizations
+@media (max-width: 768px), (pointer: coarse) {
+  html, body {
+    touch-action: manipulation;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .stage-body,
+  .stage-content,
+  .dash-stage,
+  .sidebar-nav,
+  .list-container,
+  .table-wrapper,
+  .modal-body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
 }

@@ -146,7 +146,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                         <span class="type-badge">{{ n.type === 'RemoteDaemon' ? ('admin.nodes.remoteDaemon' | translate) : ('admin.nodes.masterLocal' | translate) }}</span>
                         @if (n.type === 'RemoteDaemon') {
                           <span class="nat-badge" [class.nat-badge--nat]="n.isBehindNat">
-                            {{ n.isBehindNat ? 'NAT Fallback' : 'Direct Access' }}
+                            {{ n.isBehindNat ? ('admin.nodes.natFallback' | translate) : ('admin.nodes.directAccess' | translate) }}
                           </span>
                         }
                       </div>
@@ -197,13 +197,13 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                 <!-- Telemetry Metrics -->
                 <div class="telemetry-grid">
                   <div class="metric-item">
-                    <span class="metric-label">Latency</span>
+                    <span class="metric-label">{{ 'admin.health.latency' | translate }}</span>
                     <span class="metric-value">
                       @if (pingResults()[n.id]) {
                         @if (pingResults()[n.id].isReachable && pingResults()[n.id].latencyMs !== null && pingResults()[n.id].latencyMs !== undefined) {
                           <span class="ping-fresh">{{ pingResults()[n.id].latencyMs }} ms</span>
                         } @else {
-                          <span class="ping-unreachable">Unreachable</span>
+                          <span class="ping-unreachable">{{ 'admin.nodes.unreachable' | translate }}</span>
                         }
                       } @else if (n.latencyMs !== null && n.latencyMs !== undefined) {
                         {{ n.latencyMs }} ms
@@ -225,16 +225,16 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   </div>
 
                   <div class="metric-item">
-                    <span class="metric-label">Heartbeat</span>
+                    <span class="metric-label">{{ 'admin.nodes.heartbeat' | translate }}</span>
                     <span class="metric-value" [title]="n.lastHeartbeatAt">
                       {{ n.lastHeartbeatAt | relativeTime }}
                     </span>
                   </div>
 
                   <div class="metric-item">
-                    <span class="metric-label">Disk Health</span>
+                    <span class="metric-label">{{ 'admin.nodes.diskHealth' | translate }}</span>
                     <span class="metric-value status-good">
-                      {{ n.diskStatus || 'Healthy' }}
+                      {{ n.diskStatus || ('admin.nodes.healthy' | translate) }}
                     </span>
                   </div>
                 </div>
@@ -265,7 +265,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                   </app-glass-button>
 
                   <div class="footer-btn-group">
-                    <button class="icon-action-btn" title="Edit Node" (click)="openEditNodeModal(n)">
+                    <button class="icon-action-btn" [title]="'admin.users.edit' | translate" (click)="openEditNodeModal(n)">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 20h9"></path>
                         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
@@ -273,7 +273,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
                     </button>
 
                     @if (n.type === 'RemoteDaemon') {
-                      <button class="icon-action-btn icon-action-btn--danger" title="Delete Node" (click)="openDeleteNodeModal(n)">
+                      <button class="icon-action-btn icon-action-btn--danger" [title]="'admin.users.delete' | translate" (click)="openDeleteNodeModal(n)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <polyline points="3 6 5 6 21 6"></polyline>
                           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -310,7 +310,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
             <label>{{ 'admin.nodes.nodeType' | translate }}</label>
             <app-glass-dropdown
               [(value)]="newNodeType"
-              [options]="nodeTypeOptions"
+              [options]="nodeTypeOptions()"
             ></app-glass-dropdown>
 
             <label>{{ 'admin.users.description' | translate }}</label>
@@ -428,7 +428,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
             <label>{{ 'admin.nodes.statusOverride' | translate }}</label>
             <app-glass-dropdown
               [(value)]="editNodeStatus"
-              [options]="nodeStatusOptions"
+              [options]="nodeStatusOptions()"
             ></app-glass-dropdown>
           </div>
         }
@@ -1015,6 +1015,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class StorageNodesComponent implements OnInit, OnDestroy {
   private readonly apiService = inject(ApiService);
   private readonly signalRService = inject(SignalRService);
+  readonly i18n = inject(I18nService);
 
   nodes = signal<StorageNode[]>([]);
   isLoading = signal<boolean>(false);
@@ -1040,17 +1041,17 @@ export class StorageNodesComponent implements OnInit, OnDestroy {
   isCopied = signal<boolean>(false);
 
   // Dropdown options
-  readonly nodeTypeOptions: DropdownOption[] = [
-    { value: 'RemoteDaemon', label: 'Remote Storage Daemon' },
-    { value: 'LocalDisk', label: 'Local Disk Mount' }
-  ];
+  readonly nodeTypeOptions = computed<DropdownOption[]>(() => [
+    { value: 'RemoteDaemon', label: this.i18n.t('admin.nodes.remoteDaemon') },
+    { value: 'LocalDisk', label: this.i18n.t('admin.nodes.masterLocal') }
+  ]);
 
-  readonly nodeStatusOptions: DropdownOption[] = [
-    { value: 'Online', label: 'Online' },
-    { value: 'Degraded', label: 'Degraded' },
-    { value: 'Offline', label: 'Offline' },
-    { value: 'Maintenance', label: 'Maintenance' }
-  ];
+  readonly nodeStatusOptions = computed<DropdownOption[]>(() => [
+    { value: 'Online', label: this.i18n.t('admin.nodes.statusOnline') },
+    { value: 'Degraded', label: this.i18n.t('admin.nodes.statusDegraded') },
+    { value: 'Offline', label: this.i18n.t('admin.nodes.statusOffline') },
+    { value: 'Maintenance', label: this.i18n.t('admin.nodes.statusMaintenance') }
+  ]);
 
   readonly capacityUnitOptions: DropdownOption[] = [
     { value: 'GB', label: 'GB' },

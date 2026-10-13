@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, ElementRef, ViewChild, HostListener, inject } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ElementRef, ViewChild, HostListener, inject, NgZone, ChangeDetectorRef, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FolderItem, FileItem } from '../../../core/models/file.models';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
@@ -454,9 +454,37 @@ import { DragStateService } from '../../../core/services/drag-state.service';
         max-width: 320px;
       }
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .folders-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 8px;
+      }
+
+      .files-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 10px;
+      }
+
+      .folder-card,
+      .file-card,
+      .item-checkbox {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      .folder-card {
+        padding: 10px 10px 10px 32px;
+      }
+
+      .file-card {
+        padding: 12px 10px;
+        gap: 8px;
+      }
+    }
   `]
 })
-export class FileGridComponent {
+export class FileGridComponent implements OnDestroy {
   @ViewChild('gridContainer') gridContainerRef!: ElementRef<HTMLDivElement>;
 
   @Input() folders: FolderItem[] = [];
@@ -481,6 +509,8 @@ export class FileGridComponent {
   @Output() emptySpaceClick = new EventEmitter<MouseEvent>();
 
   readonly dragState = inject(DragStateService);
+  private readonly ngZone = inject(NgZone);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   dragOverFolderId: string | null = null;
   isTouchDevice = false;
@@ -494,6 +524,9 @@ export class FileGridComponent {
   marqueeBox = { left: 0, top: 0, width: 0, height: 0 };
   private marqueeInitialFolderIds: string[] = [];
   private marqueeInitialFileIds: string[] = [];
+  private marqueeRafId: number | null = null;
+  private boundDocumentMouseMove: ((e: MouseEvent) => void) | null = null;
+  private boundDocumentMouseUp: (() => void) | null = null;
 
   // Pivot for shift range selection
   private lastPivot: { type: 'folder' | 'file'; id: string } | null = null;
@@ -694,9 +727,51 @@ export class FileGridComponent {
         height: 0
       };
     }
+
+    // Attach dynamic listeners outside Angular zone to prevent change detection thrashing
+    this.cleanupMarqueeListeners();
+    this.boundDocumentMouseMove = (e: MouseEvent) => {
+      if (!this.isMarqueeActive) return;
+      if (this.marqueeRafId !== null) return;
+      this.marqueeRafId = requestAnimationFrame(() => {
+        this.marqueeRafId = null;
+        this.onDocumentMouseMove(e);
+        this.cdr.detectChanges();
+      });
+    };
+    this.boundDocumentMouseUp = () => {
+      this.cleanupMarqueeListeners();
+      this.ngZone.run(() => {
+        this.onDocumentMouseUp();
+        this.cdr.markForCheck();
+      });
+    };
+
+    this.ngZone.runOutsideAngular(() => {
+      document.addEventListener('mousemove', this.boundDocumentMouseMove!, { passive: true });
+      document.addEventListener('mouseup', this.boundDocumentMouseUp!);
+    });
   }
 
-  @HostListener('document:mousemove', ['$event'])
+  ngOnDestroy(): void {
+    this.cleanupMarqueeListeners();
+  }
+
+  private cleanupMarqueeListeners(): void {
+    if (this.marqueeRafId !== null) {
+      cancelAnimationFrame(this.marqueeRafId);
+      this.marqueeRafId = null;
+    }
+    if (this.boundDocumentMouseMove) {
+      document.removeEventListener('mousemove', this.boundDocumentMouseMove);
+      this.boundDocumentMouseMove = null;
+    }
+    if (this.boundDocumentMouseUp) {
+      document.removeEventListener('mouseup', this.boundDocumentMouseUp);
+      this.boundDocumentMouseUp = null;
+    }
+  }
+
   onDocumentMouseMove(event: MouseEvent): void {
     if (!this.isMarqueeActive || !this.gridContainerRef) return;
 
@@ -749,7 +824,6 @@ export class FileGridComponent {
     this.selectedFileId = this.selectedFileIds.length === 1 && this.selectedFolderIds.length === 0 ? this.selectedFileIds[0] : null;
   }
 
-  @HostListener('document:mouseup')
   onDocumentMouseUp(): void {
     if (this.isMarqueeActive) {
       this.isMarqueeActive = false;

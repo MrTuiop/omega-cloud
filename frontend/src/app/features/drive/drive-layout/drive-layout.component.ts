@@ -776,7 +776,8 @@ type DisplayMode = 'grid' | 'list';
 
     // Sidebar
     .sidebar {
-      width: 250px;
+      width: 260px;
+      min-width: 260px;
       height: 100%;
       @include glass-surface;
       border-width: 0 1px 0 0;
@@ -1485,10 +1486,16 @@ type DisplayMode = 'grid' | 'list';
         transition: transform 0.25s var(--omega-ease-smooth);
         z-index: 100;
         box-shadow: 0 0 30px rgba(0, 0, 0, 0.4);
+        will-change: transform;
 
         &--open {
           transform: translateX(0);
         }
+      }
+
+      .mobile-drawer-backdrop {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
       }
 
       .hamburger-btn, .mobile-close-btn {
@@ -1497,8 +1504,60 @@ type DisplayMode = 'grid' | 'list';
         justify-content: center;
       }
 
+      .stage-header {
+        padding: 10px 14px;
+        flex-wrap: wrap;
+        gap: 8px;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      .header-left {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .header-right {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        justify-content: flex-start;
+      }
+
+      .search-box {
+        flex: 1 1 140px;
+        min-width: 120px;
+
+        input {
+          width: 100%;
+          min-width: 100px;
+        }
+
+        .clear-search {
+          left: auto;
+          right: 48px;
+        }
+
+        .scope-pill-text {
+          display: none;
+        }
+      }
+
+      .stage-body {
+        padding: 12px 14px;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+
       .mobile-action-sheet {
         display: flex;
+        will-change: transform;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
       }
 
       .bulk-action-bar {

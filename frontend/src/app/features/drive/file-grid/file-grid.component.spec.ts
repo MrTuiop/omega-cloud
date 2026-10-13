@@ -246,5 +246,41 @@ describe('FileGridComponent', () => {
 
     expect(component.dragOverFolderId).toBeNull();
   });
+
+  it('should attach listeners on mousedown and clean up on mouseup', () => {
+    spyOn(document, 'addEventListener').and.callThrough();
+    spyOn(document, 'removeEventListener').and.callThrough();
+    spyOn(component.selectionChange, 'emit');
+
+    const container = fixture.nativeElement.querySelector('.grid-container');
+    const mouseDownEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    container.dispatchEvent(mouseDownEvent);
+
+    expect(component.isMarqueeActive).toBeTrue();
+    expect(document.addEventListener).toHaveBeenCalledWith('mousemove', jasmine.any(Function), jasmine.any(Object));
+    expect(document.addEventListener).toHaveBeenCalledWith('mouseup', jasmine.any(Function));
+
+    const mouseUpEvent = new MouseEvent('mouseup', { bubbles: true, cancelable: true });
+    document.dispatchEvent(mouseUpEvent);
+
+    expect(component.isMarqueeActive).toBeFalse();
+    expect(document.removeEventListener).toHaveBeenCalledWith('mousemove', jasmine.any(Function));
+    expect(document.removeEventListener).toHaveBeenCalledWith('mouseup', jasmine.any(Function));
+    expect(component.selectionChange.emit).toHaveBeenCalled();
+  });
+
+  it('should clean up marquee listeners on component destroy', () => {
+    spyOn(document, 'removeEventListener').and.callThrough();
+
+    const container = fixture.nativeElement.querySelector('.grid-container');
+    const mouseDownEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    container.dispatchEvent(mouseDownEvent);
+
+    expect(component.isMarqueeActive).toBeTrue();
+    fixture.destroy();
+
+    expect(document.removeEventListener).toHaveBeenCalledWith('mousemove', jasmine.any(Function));
+    expect(document.removeEventListener).toHaveBeenCalledWith('mouseup', jasmine.any(Function));
+  });
 });
 

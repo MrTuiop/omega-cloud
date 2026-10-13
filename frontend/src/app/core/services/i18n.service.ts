@@ -335,7 +335,70 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     'admin.health.uptime': 'Uptime',
     'admin.health.osPlatform': 'OS Platform',
     'admin.health.runtime': 'Runtime',
-    'admin.health.threads': 'ThreadPool'
+    'admin.health.threads': 'ThreadPool',
+
+    // Storage & Resources
+    'storage.used': 'Used',
+    'storage.available': 'Available',
+    'storage.total': 'Total',
+
+    // Auth & Login
+    'auth.title': 'Omega Cloud',
+    'auth.subtitle': 'High-performance private cloud storage',
+    'auth.usernameOrEmail': 'Username or Email',
+    'auth.password': 'Password',
+    'auth.signIn': 'Sign In',
+    'auth.or': 'or',
+    'auth.goToShared': 'Go to Shared Space (No login)',
+
+    // Admin Users Extra
+    'admin.users.lastActive': 'Last Active',
+    'admin.users.cannotModifySelf': 'Current administrator cannot deactivate or remove admin permissions from their own account.',
+    'admin.users.resetPasswordNotice': 'Entering a new password will immediately terminate all active sessions for this user.',
+    'admin.users.passwordMinLength': 'Minimum 6 characters',
+    'admin.users.revokeModalTitle': 'Revoke Sessions: {username}',
+    'admin.users.revokeSessionsWarning': 'Are you sure you want to terminate all other active sessions for this user?',
+    'admin.users.sessions': 'Sessions',
+    'admin.users.usersCount': 'Users',
+    'admin.users.description': 'Description',
+
+    // Admin Nodes Extra
+    'admin.nodes.statusOnline': 'Online',
+    'admin.nodes.statusDegraded': 'Degraded',
+    'admin.nodes.statusOffline': 'Offline',
+    'admin.nodes.statusMaintenance': 'Maintenance',
+    'admin.nodes.registered': 'Registered',
+    'admin.nodes.heartbeat': 'Heartbeat',
+    'admin.nodes.diskHealth': 'Disk Health',
+    'admin.nodes.unreachable': 'Unreachable',
+    'admin.nodes.natFallback': 'NAT Fallback',
+    'admin.nodes.directAccess': 'Direct Access',
+    'admin.nodes.healthy': 'Healthy',
+
+    // Admin Audit Actions
+    'admin.audit.action.userLogin': 'User Login',
+    'admin.audit.action.userLogout': 'User Logout',
+    'admin.audit.action.userCreated': 'User Created',
+    'admin.audit.action.userUpdated': 'User Updated',
+    'admin.audit.action.passwordReset': 'Password Reset',
+    'admin.audit.action.sessionRevoked': 'Session Revoked',
+    'admin.audit.action.sessionsRevoked': 'Sessions Revoked',
+    'admin.audit.action.userDeleted': 'User Deleted',
+    'admin.audit.action.fileUploaded': 'File Uploaded',
+    'admin.audit.action.fileDownloaded': 'File Downloaded',
+    'admin.audit.action.fileDeleted': 'File Deleted',
+    'admin.audit.action.trashEmptied': 'Trash Emptied',
+    'admin.audit.action.nodeRegistered': 'Node Registered',
+    'admin.audit.action.nodeWentOffline': 'Node Went Offline',
+    'admin.audit.action.nodeTokenGenerated': 'Node Token Generated',
+    'admin.audit.action.nodePinged': 'Node Pinged',
+    'admin.audit.action.nodeUpdated': 'Node Updated',
+    'admin.audit.action.nodeDeleted': 'Node Deleted',
+
+    // Admin Health Extra
+    'admin.health.storageDesc': 'Master disk storage partition',
+    'admin.health.authMechanism': 'Auth Mechanism',
+    'admin.health.startedAt': 'Server Started At'
   },
   ru: {
     // Навигация
@@ -657,7 +720,70 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     'admin.health.uptime': 'Время работы',
     'admin.health.osPlatform': 'Операционная система',
     'admin.health.runtime': 'Среда',
-    'admin.health.threads': 'Пул потоков'
+    'admin.health.threads': 'Пул потоков',
+
+    // Хранилище и ресурсы
+    'storage.used': 'Занято',
+    'storage.available': 'Доступно',
+    'storage.total': 'Всего',
+
+    // Авторизация
+    'auth.title': 'Omega Cloud',
+    'auth.subtitle': 'Высокопроизводительное приватное облачное хранилище',
+    'auth.usernameOrEmail': 'Имя пользователя или Email',
+    'auth.password': 'Пароль',
+    'auth.signIn': 'Войти',
+    'auth.or': 'или',
+    'auth.goToShared': 'Перейти в Общий раздел (без входа)',
+
+    // Пользователи (дополнительно)
+    'admin.users.lastActive': 'Последняя активность',
+    'admin.users.cannotModifySelf': 'Текущий администратор не может деактивировать или лишить прав свою учетную запись.',
+    'admin.users.resetPasswordNotice': 'Ввод нового пароля немедленно завершит все активные сессии этого пользователя.',
+    'admin.users.passwordMinLength': 'Минимум 6 символов',
+    'admin.users.revokeModalTitle': 'Отозвать сессии: {username}',
+    'admin.users.revokeSessionsWarning': 'Вы уверены, что хотите завершить все остальные активные сессии этого пользователя?',
+    'admin.users.sessions': 'Сессии',
+    'admin.users.usersCount': 'пользователей',
+    'admin.users.description': 'Описание',
+
+    // Ноды хранения (дополнительно)
+    'admin.nodes.statusOnline': 'Онлайн',
+    'admin.nodes.statusDegraded': 'Деградация',
+    'admin.nodes.statusOffline': 'Оффлайн',
+    'admin.nodes.statusMaintenance': 'Обслуживание',
+    'admin.nodes.registered': 'зарегистрировано',
+    'admin.nodes.heartbeat': 'Отклик / Heartbeat',
+    'admin.nodes.diskHealth': 'Состояние диска',
+    'admin.nodes.unreachable': 'Недоступно',
+    'admin.nodes.natFallback': 'Через Мастер (NAT)',
+    'admin.nodes.directAccess': 'Прямой доступ',
+    'admin.nodes.healthy': 'В норме',
+
+    // Журнал аудита: Действия
+    'admin.audit.action.userLogin': 'Вход пользователя',
+    'admin.audit.action.userLogout': 'Выход пользователя',
+    'admin.audit.action.userCreated': 'Создание пользователя',
+    'admin.audit.action.userUpdated': 'Обновление пользователя',
+    'admin.audit.action.passwordReset': 'Сброс пароля',
+    'admin.audit.action.sessionRevoked': 'Отзыв сессии',
+    'admin.audit.action.sessionsRevoked': 'Отзыв сессий',
+    'admin.audit.action.userDeleted': 'Удаление пользователя',
+    'admin.audit.action.fileUploaded': 'Загрузка файла',
+    'admin.audit.action.fileDownloaded': 'Скачивание файла',
+    'admin.audit.action.fileDeleted': 'Удаление файла',
+    'admin.audit.action.trashEmptied': 'Очистка корзины',
+    'admin.audit.action.nodeRegistered': 'Регистрация ноды',
+    'admin.audit.action.nodeWentOffline': 'Нода отключилась',
+    'admin.audit.action.nodeTokenGenerated': 'Создан токен ноды',
+    'admin.audit.action.nodePinged': 'Пинг ноды',
+    'admin.audit.action.nodeUpdated': 'Обновление ноды',
+    'admin.audit.action.nodeDeleted': 'Удаление ноды',
+
+    // Здоровье системы (дополнительно)
+    'admin.health.storageDesc': 'Раздел хранения на Мастер-сервере',
+    'admin.health.authMechanism': 'Авторизация',
+    'admin.health.startedAt': 'Сервер запущен'
   },
   zh: {
     // 导航
@@ -979,7 +1105,70 @@ const TRANSLATIONS: Record<AppLanguage, Record<string, string>> = {
     'admin.health.uptime': '运行时间',
     'admin.health.osPlatform': '操作系统',
     'admin.health.runtime': '运行时',
-    'admin.health.threads': '线程池'
+    'admin.health.threads': '线程池',
+
+    // 存储与资源
+    'storage.used': '已用',
+    'storage.available': '可用',
+    'storage.total': '总计',
+
+    // 认证与登录
+    'auth.title': 'Omega Cloud',
+    'auth.subtitle': '高性能私有云存储',
+    'auth.usernameOrEmail': '用户名或邮箱',
+    'auth.password': '密码',
+    'auth.signIn': '登录',
+    'auth.or': '或',
+    'auth.goToShared': '进入共享空间 (免登录)',
+
+    // 用户管理补充
+    'admin.users.lastActive': '最后活跃',
+    'admin.users.cannotModifySelf': '当前管理员不能停用自己的账户或移除管理员权限。',
+    'admin.users.resetPasswordNotice': '设置新密码将立即终止该用户的所有活跃会话。',
+    'admin.users.passwordMinLength': '至少 6 个字符',
+    'admin.users.revokeModalTitle': '注销会话：{username}',
+    'admin.users.revokeSessionsWarning': '确定要注销该用户在其他设备上的所有活跃会话吗？',
+    'admin.users.sessions': '会话',
+    'admin.users.usersCount': '个用户',
+    'admin.users.description': '描述',
+
+    // 存储节点补充
+    'admin.nodes.statusOnline': '在线',
+    'admin.nodes.statusDegraded': '性能下降',
+    'admin.nodes.statusOffline': '离线',
+    'admin.nodes.statusMaintenance': '维护中',
+    'admin.nodes.registered': '已注册',
+    'admin.nodes.heartbeat': '心跳响应',
+    'admin.nodes.diskHealth': '磁盘状态',
+    'admin.nodes.unreachable': '无法访问',
+    'admin.nodes.natFallback': 'NAT 中转',
+    'admin.nodes.directAccess': '直连访问',
+    'admin.nodes.healthy': '正常',
+
+    // 审计日志操作类型
+    'admin.audit.action.userLogin': '用户登录',
+    'admin.audit.action.userLogout': '用户登出',
+    'admin.audit.action.userCreated': '创建用户',
+    'admin.audit.action.userUpdated': '更新用户',
+    'admin.audit.action.passwordReset': '重置密码',
+    'admin.audit.action.sessionRevoked': '注销会话',
+    'admin.audit.action.sessionsRevoked': '注销全部会话',
+    'admin.audit.action.userDeleted': '删除用户',
+    'admin.audit.action.fileUploaded': '上传文件',
+    'admin.audit.action.fileDownloaded': '下载文件',
+    'admin.audit.action.fileDeleted': '删除文件',
+    'admin.audit.action.trashEmptied': '清空回收站',
+    'admin.audit.action.nodeRegistered': '注册节点',
+    'admin.audit.action.nodeWentOffline': '节点离线',
+    'admin.audit.action.nodeTokenGenerated': '生成节点令牌',
+    'admin.audit.action.nodePinged': '节点测速',
+    'admin.audit.action.nodeUpdated': '更新节点',
+    'admin.audit.action.nodeDeleted': '删除节点',
+
+    // 系统监控补充
+    'admin.health.storageDesc': '主服务器磁盘存储分区',
+    'admin.health.authMechanism': '认证机制',
+    'admin.health.startedAt': '服务器启动时间'
   }
 };
 

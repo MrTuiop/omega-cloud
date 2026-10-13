@@ -204,6 +204,14 @@ import { ToastMessage } from '../../../core/models/toast.models';
         color: var(--omega-text-primary);
       }
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .toast-batch-toggle,
+      .toast-item {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+    }
   `]
 })
 export class ToastContainerComponent {

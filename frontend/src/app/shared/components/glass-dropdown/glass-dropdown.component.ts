@@ -43,7 +43,6 @@ export type DropdownVariant = 'default' | 'subtle';
       [class.glass-dropdown--open]="isOpen()"
       [class.glass-dropdown--disabled]="disabled"
       [class]="'glass-dropdown--' + size + ' glass-dropdown--' + variant"
-      tabindex="0"
       role="combobox"
       [attr.aria-expanded]="isOpen()"
       [attr.aria-disabled]="disabled"
@@ -73,8 +72,8 @@ export type DropdownVariant = 'default' | 'subtle';
             <div
               class="dropdown-item"
               role="option"
-              [attr.aria-selected]="opt.value === currentValue()"
-              [class.dropdown-item--selected]="opt.value === currentValue()"
+              [attr.aria-selected]="isSelected(opt.value)"
+              [class.dropdown-item--selected]="isSelected(opt.value)"
               [class.dropdown-item--focused]="highlightedIndex() === idx"
               [class.dropdown-item--disabled]="opt.disabled"
               (click)="selectOption(opt, $event)"
@@ -87,7 +86,7 @@ export type DropdownVariant = 'default' | 'subtle';
               @if (opt.badge) {
                 <span class="item-badge">{{ opt.badge }}</span>
               }
-              @if (opt.value === currentValue()) {
+              @if (isSelected(opt.value)) {
                 <span class="item-check">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <polyline points="20 6 9 17 4 12"></polyline>
@@ -114,9 +113,13 @@ export type DropdownVariant = 'default' | 'subtle';
       position: relative;
       display: inline-flex;
       width: 100%;
-      min-width: 120px;
+      min-width: 90px;
       user-select: none;
       outline: none;
+
+      &--sm {
+        min-width: 54px;
+      }
 
       &--disabled {
         opacity: 0.5;
@@ -213,9 +216,10 @@ export type DropdownVariant = 'default' | 'subtle';
       position: absolute;
       top: calc(100% + 4px);
       left: 0;
-      right: 0;
       z-index: 1000;
-      min-width: 140px;
+      min-width: 100%;
+      width: max-content;
+      max-width: 320px;
       max-height: 260px;
       overflow-y: auto;
       padding: 6px;
@@ -305,12 +309,13 @@ export type DropdownVariant = 'default' | 'subtle';
 export class GlassDropdownComponent implements ControlValueAccessor {
   private readonly elementRef = inject(ElementRef);
 
-  @Input() set options(val: Array<DropdownOption | string | number>) {
-    if (!val) {
+  @Input() set options(val: Array<DropdownOption | string | number> | (() => Array<DropdownOption | string | number>) | any) {
+    const list = typeof val === 'function' ? val() : val;
+    if (!list || !Array.isArray(list)) {
       this._rawOptions.set([]);
       return;
     }
-    const normalized: DropdownOption[] = val.map(item => {
+    const normalized: DropdownOption[] = list.map(item => {
       if (typeof item === 'object' && item !== null && 'value' in item) {
         return item as DropdownOption;
       }
@@ -344,9 +349,17 @@ export class GlassDropdownComponent implements ControlValueAccessor {
   readonly isOpen = signal<boolean>(false);
   readonly highlightedIndex = signal<number>(-1);
 
+  isSelected(optValue: any): boolean {
+    const cur = this._currentValue();
+    if (optValue === cur) return true;
+    if (cur !== null && cur !== undefined && optValue !== null && optValue !== undefined) {
+      return String(optValue) === String(cur);
+    }
+    return false;
+  }
+
   readonly selectedOption = computed(() => {
-    const val = this._currentValue();
-    return this.normalizedOptions().find(o => o.value === val) || null;
+    return this.normalizedOptions().find(o => this.isSelected(o.value)) || null;
   });
 
   readonly selectedLabel = computed(() => {

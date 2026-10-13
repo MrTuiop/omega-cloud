@@ -455,6 +455,25 @@ type SortDirection = 'asc' | 'desc';
         color: var(--omega-text-secondary);
       }
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .table-wrapper {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .col-owner,
+      .col-date,
+      .col-kind {
+        display: none !important;
+      }
+
+      td, th {
+        padding: 8px 10px !important;
+      }
+    }
   `]
 })
 export class FileListComponent {
