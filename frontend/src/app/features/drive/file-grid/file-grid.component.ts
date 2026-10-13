@@ -40,7 +40,7 @@ import { DragStateService } from '../../../core/services/drag-state.service';
               [attr.data-type]="'folder'"
               [class.folder-card--selected]="isFolderSelected(folder.id)"
               [class.folder-card--dragover]="dragOverFolderId === folder.id"
-              [draggable]="true"
+              [draggable]="!isTouchDevice"
               (click)="onFolderClick($event, folder)"
               (dblclick)="openFolder.emit(folder)"
               (contextmenu)="onFolderContextMenu($event, folder)"
@@ -87,7 +87,7 @@ import { DragStateService } from '../../../core/services/drag-state.service';
               [attr.data-id]="file.id"
               [attr.data-type]="'file'"
               [class.file-card--selected]="isFileSelected(file.id)"
-              [draggable]="true"
+              [draggable]="!isTouchDevice"
               (click)="onFileClick($event, file)"
               (dblclick)="onFileDoubleClick(file)"
               (contextmenu)="onFileContextMenu($event, file)"
@@ -178,7 +178,8 @@ import { DragStateService } from '../../../core/services/drag-state.service';
       border-radius: 4px;
       pointer-events: none;
       z-index: 50;
-      backdrop-filter: blur(1px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
     }
 
     .section-title {
@@ -208,7 +209,8 @@ import { DragStateService } from '../../../core/services/drag-state.service';
       border-radius: 50%;
       border: 1.5px solid var(--omega-glass-border, rgba(255, 255, 255, 0.4));
       background: rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(8px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -234,6 +236,8 @@ import { DragStateService } from '../../../core/services/drag-state.service';
 
     .folder-card {
       @include glass-surface;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 54px;
       border-radius: var(--omega-radius-md);
       padding: 12px 14px 12px 34px;
       display: flex;
@@ -311,6 +315,8 @@ import { DragStateService } from '../../../core/services/drag-state.service';
 
     .file-card {
       @include glass-surface;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 120px;
       border-radius: var(--omega-radius-lg);
       padding: 16px;
       display: flex;
@@ -513,7 +519,10 @@ export class FileGridComponent implements OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
 
   dragOverFolderId: string | null = null;
-  isTouchDevice = false;
+  isTouchDevice = typeof window !== 'undefined' && (
+    (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+    ('ontouchstart' in window && !(typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches))
+  );
 
   // Marquee state
   isMarqueeActive = false;
@@ -705,6 +714,10 @@ export class FileGridComponent implements OnDestroy {
       this.selectedFileId = null;
       this.selectionChange.emit({ folderIds: [], fileIds: [] });
       this.emptySpaceClick.emit(event);
+    }
+
+    if (this.isTouchDevice) {
+      return;
     }
 
     this.marqueeInitialFolderIds = isCtrl ? [...this.selectedFolderIds] : [];

@@ -72,7 +72,7 @@ type SortDirection = 'asc' | 'desc';
                 [attr.data-type]="'folder'"
                 [class.table-row--selected]="isFolderSelected(folder.id)"
                 [class.table-row--dragover]="dragOverFolderId === folder.id"
-                [draggable]="true"
+                [draggable]="!isTouchDevice"
                 (click)="onFolderClick($event, folder)"
                 (dblclick)="openFolder.emit(folder)"
                 (contextmenu)="onFolderContextMenu($event, folder)"
@@ -119,7 +119,7 @@ type SortDirection = 'asc' | 'desc';
                 [attr.data-id]="file.id"
                 [attr.data-type]="'file'"
                 [class.table-row--selected]="isFileSelected(file.id)"
-                [draggable]="true"
+                [draggable]="!isTouchDevice"
                 (click)="onFileClick($event, file)"
                 (dblclick)="onFileDoubleClick(file)"
                 (contextmenu)="onFileContextMenu($event, file)"
@@ -310,6 +310,8 @@ type SortDirection = 'asc' | 'desc';
     }
 
     .table-row {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 44px;
       border-bottom: 1px solid var(--omega-glass-border-subtle);
       transition: background 0.15s ease, box-shadow 0.15s ease;
       cursor: pointer;
@@ -502,9 +504,20 @@ export class FileListComponent {
 
   readonly sortCol = signal<SortColumn>('name');
   readonly sortDir = signal<SortDirection>('asc');
-
   dragOverFolderId: string | null = null;
-  isTouchDevice = false;
+  isTouchDevice = typeof window !== 'undefined' && (
+    (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+    ('ontouchstart' in window && !(typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches))
+  );
+
+  private _cachedSortedFolders: FolderItem[] = [];
+  private _cachedSortedFiles: FileItem[] = [];
+  private _lastFoldersRef: FolderItem[] | null = null;
+  private _lastFilesRef: FileItem[] | null = null;
+  private _lastFoldersSortCol: SortColumn | null = null;
+  private _lastFoldersSortDir: SortDirection | null = null;
+  private _lastFilesSortCol: SortColumn | null = null;
+  private _lastFilesSortDir: SortDirection | null = null;
 
   private lastPivot: { type: 'folder' | 'file'; id: string } | null = null;
 
@@ -598,23 +611,39 @@ export class FileListComponent {
 
   get sortedFolders(): FolderItem[] {
     const col = this.sortCol();
-    const dir = this.sortDir() === 'asc' ? 1 : -1;
-    return [...this.folders].sort((a, b) => {
-      if (col === 'name') return a.name.localeCompare(b.name) * dir;
-      if (col === 'updatedAt') return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * dir;
+    const dir = this.sortDir();
+    if (this._lastFoldersRef === this.folders && this._lastFoldersSortCol === col && this._lastFoldersSortDir === dir) {
+      return this._cachedSortedFolders;
+    }
+    this._lastFoldersRef = this.folders;
+    this._lastFoldersSortCol = col;
+    this._lastFoldersSortDir = dir;
+    const mult = dir === 'asc' ? 1 : -1;
+    this._cachedSortedFolders = [...this.folders].sort((a, b) => {
+      if (col === 'name') return a.name.localeCompare(b.name) * mult;
+      if (col === 'updatedAt') return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * mult;
       return 0;
     });
+    return this._cachedSortedFolders;
   }
 
   get sortedFiles(): FileItem[] {
     const col = this.sortCol();
-    const dir = this.sortDir() === 'asc' ? 1 : -1;
-    return [...this.files].sort((a, b) => {
-      if (col === 'name') return a.name.localeCompare(b.name) * dir;
-      if (col === 'size') return ((a.sizeBytes || 0) - (b.sizeBytes || 0)) * dir;
-      if (col === 'updatedAt') return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * dir;
+    const dir = this.sortDir();
+    if (this._lastFilesRef === this.files && this._lastFilesSortCol === col && this._lastFilesSortDir === dir) {
+      return this._cachedSortedFiles;
+    }
+    this._lastFilesRef = this.files;
+    this._lastFilesSortCol = col;
+    this._lastFilesSortDir = dir;
+    const mult = dir === 'asc' ? 1 : -1;
+    this._cachedSortedFiles = [...this.files].sort((a, b) => {
+      if (col === 'name') return a.name.localeCompare(b.name) * mult;
+      if (col === 'size') return ((a.sizeBytes || 0) - (b.sizeBytes || 0)) * mult;
+      if (col === 'updatedAt') return (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()) * mult;
       return 0;
     });
+    return this._cachedSortedFiles;
   }
 
   onFolderClick(event: MouseEvent, folder: FolderItem): void {

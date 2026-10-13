@@ -527,8 +527,8 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       flex-direction: column;
       border-right: 1px solid var(--omega-glass-border-subtle);
       background: var(--omega-glass-bg);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
       z-index: 50;
       transition: transform 0.25s var(--omega-ease-smooth);
     }
@@ -751,8 +751,8 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       gap: 16px;
       border-bottom: 1px solid var(--omega-glass-border-subtle);
       background: var(--omega-glass-bg-subtle);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
       flex-shrink: 0;
     }
 
@@ -924,6 +924,8 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
 
     .folder-card {
       @include glass-surface;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 54px;
       padding: 12px 14px;
       border-radius: var(--omega-radius-md);
       display: flex;
@@ -976,6 +978,8 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
 
     .file-card {
       @include glass-surface;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 120px;
       border-radius: var(--omega-radius-md);
       overflow: hidden;
       display: flex;
@@ -1138,7 +1142,8 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       position: absolute;
       inset: 0;
       background: rgba(0, 113, 227, 0.25);
-      backdrop-filter: blur(8px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
       z-index: 100;
       display: flex;
       align-items: center;
@@ -1197,7 +1202,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
       line-height: 1.5;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 768px), (pointer: coarse) {
       .sidebar {
         position: fixed;
         top: 0;

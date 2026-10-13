@@ -1031,7 +1031,7 @@ import { UploadQueueModalComponent } from '../drive/upload-queue-modal/upload-qu
     }
 
     /* Mobile Drawer & Performance */
-    @media (max-width: 768px) {
+    @media (max-width: 768px), (pointer: coarse) {
       .sidebar {
         position: fixed;
         top: 0;

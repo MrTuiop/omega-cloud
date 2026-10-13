@@ -1140,7 +1140,8 @@ type DisplayMode = 'grid' | 'list';
       inset: 0;
       z-index: 9999;
       background: rgba(0, 113, 227, 0.15);
-      backdrop-filter: blur(16px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1394,7 +1395,8 @@ type DisplayMode = 'grid' | 'list';
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(8px);
+      backdrop-filter: var(--omega-backdrop-blur);
+      -webkit-backdrop-filter: var(--omega-backdrop-blur);
       z-index: 99;
     }
 
@@ -1476,7 +1478,7 @@ type DisplayMode = 'grid' | 'list';
     }
 
     /* Mobile media query */
-    @media (max-width: 768px) {
+    @media (max-width: 768px), (pointer: coarse) {
       .sidebar {
         position: fixed;
         top: 0;
