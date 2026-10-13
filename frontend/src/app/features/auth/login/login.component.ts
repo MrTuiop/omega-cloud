@@ -219,22 +219,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
     @media (max-width: 768px), (pointer: coarse) {
       .ambient-glow {
-        filter: blur(40px);
-        animation: none;
-
-        &--1 {
-          width: 260px;
-          height: 260px;
-          top: 10%;
-          left: 10%;
-        }
-
-        &--2 {
-          width: 240px;
-          height: 240px;
-          bottom: 10%;
-          right: 10%;
-        }
+        display: none !important;
       }
     }
 

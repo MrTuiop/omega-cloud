@@ -409,6 +409,18 @@ interface FolderTreeNode {
       gap: 10px;
       width: 100%;
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .scope-modal-body {
+        min-width: 0 !important;
+        width: 100% !important;
+        max-width: 100%;
+      }
+
+      .preset-buttons {
+        flex-direction: column;
+      }
+    }
   `]
 })
 export class SearchScopeModalComponent implements OnChanges {

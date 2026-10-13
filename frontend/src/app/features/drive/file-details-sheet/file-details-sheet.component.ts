@@ -292,6 +292,28 @@ import { getFileTypeInfo } from '../../../shared/utils/file-icons';
         background: var(--omega-accent-subtle);
       }
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .sheet-container {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100% !important;
+        max-width: 100vw;
+        border-radius: 0;
+        z-index: 150;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        box-shadow: none;
+      }
+
+      .sheet-body {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+      }
+    }
   `]
 })
 export class FileDetailsSheetComponent implements OnChanges {

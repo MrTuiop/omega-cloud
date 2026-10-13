@@ -122,6 +122,14 @@ export interface ContextMenuItem {
       margin: 4px 6px;
       background: var(--omega-glass-border-subtle);
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .context-menu {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      }
+    }
   `]
 })
 export class ContextMenuComponent {

@@ -362,6 +362,26 @@ import { UploadTask } from '../../../core/models/upload.models';
       font-size: 11px;
       color: var(--omega-danger);
     }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .tray-wrapper {
+        bottom: 12px;
+        right: 12px;
+        left: 12px;
+      }
+
+      .expanded-panel {
+        width: 100%;
+        max-width: 100%;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      .capsule-btn {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+    }
   `]
 })
 export class UploadTrayComponent {
